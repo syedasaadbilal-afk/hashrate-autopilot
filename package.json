@@ -19,6 +19,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "smoke": "tsx scripts/smoke-braiins.ts",
+    "smoke:nicehash": "tsx scripts/smoke-nicehash.ts",
+    "probe:nicehash-pricing": "tsx scripts/probe-nicehash-pricing-model.ts",
     "setup": "tsx scripts/setup.ts",
     "daemon": "tsx packages/daemon/src/main.ts"
   },
@@ -26,6 +28,7 @@
     "@eslint/js": "^10.0.1",
     "@hashrate-autopilot/braiins-client": "workspace:*",
     "@hashrate-autopilot/daemon": "workspace:*",
+    "@hashrate-autopilot/nicehash-client": "workspace:*",
     "@hashrate-autopilot/shared": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
     "@types/node": "^26.1.0",

@@ -14,16 +14,54 @@
 
 
 import { decide } from './decide.js';
+import { evaluateProviders, type EvaluateProvidersResult } from './evaluate-providers.js';
 import { execute, type ExecuteDeps } from './execute.js';
 import { gate } from './gate.js';
 import { observe, type ObserveDeps } from './observe.js';
 import { decidePauseEvent } from './pause-events.js';
+import type { Provider, ProviderSelectState } from './provider-select.js';
+import type { NiceHashService } from '../services/nicehash-service.js';
 import type { ExecutionResult, GateOutcome, Proposal, State } from './types.js';
+
+/**
+ * Dual-provider settings for the DRY-RUN evaluation (#dual-provider). Sourced
+ * from environment variables in main.ts for this first cut (no config-table
+ * migration); live-editable config + persistence come later. When
+ * `enabled` is false the whole block is skipped and the daemon behaves
+ * exactly as the Braiins-only build.
+ */
+export interface ProviderEvalConfig {
+  readonly enabled: boolean;
+  readonly algorithm: string;
+  readonly market: string;
+  readonly switchThresholdPct: number;
+  readonly sustainedWindowMinutes: number;
+  readonly minDeliveredPh: number;
+  readonly braiinsFeePct: number;
+  readonly nicehashFeePct: number;
+}
 
 export interface TickDeps extends ObserveDeps, ExecuteDeps {
   // `tickMetricsRepo` is inherited from ObserveDeps (#50).
   /** Sync read of the latest hashprice from Ocean stats (sat/PH/day). */
   readonly getHashprice?: () => number | null;
+  /** Optional NiceHash read service; present only when dual-provider is enabled. */
+  readonly nicehashService?: NiceHashService;
+  /** Dual-provider evaluation config (env-sourced). Absent = feature off. */
+  readonly providerEvalConfig?: ProviderEvalConfig;
+}
+
+/** The latest dual-provider evaluation, surfaced to the status API. */
+export interface ProviderEvaluationSnapshot {
+  readonly at: number;
+  readonly activeProvider: Provider;
+  readonly braiinsEffectiveSatPerPhDay: number | null;
+  readonly nicehashEffectiveSatPerPhDay: number | null;
+  readonly braiinsCostSatPerPhDay: number | null;
+  readonly nicehashCostSatPerPhDay: number | null;
+  readonly nicehashAdvantagePct: number | null;
+  readonly switched: boolean;
+  readonly reason: string;
 }
 
 export interface TickResult {
@@ -47,6 +85,17 @@ export class Controller {
    * daemon downtime is not retroactively logged).
    */
   private prevPauseObservation: { orderId: string; paused: boolean } | null = null;
+
+  /**
+   * #dual-provider: in-memory provider-selection state. Held in memory (not
+   * persisted) for this DRY-RUN cut - a daemon restart resets to BRAIINS with
+   * a fresh sustained window, which is the conservative default (a restart
+   * simply re-earns any switch). The latest evaluation is exposed to
+   * /api/status via {@link getProviderEvaluation}.
+   */
+  private activeProvider: Provider = 'BRAIINS';
+  private challengerReadySince: number | null = null;
+  private lastProviderEvaluation: ProviderEvaluationSnapshot | null = null;
 
   /**
    * #287 follow-up: the order id of a BID_PAUSED we have emitted and
@@ -283,12 +332,80 @@ export class Controller {
       console.warn(`[tick] metrics insert failed: ${(err as Error).message}`);
     }
 
+    // ---- Dual-provider evaluation (#dual-provider) --------------------------
+    // Additive and fully isolated: never touches the Braiins decide/execute
+    // path above. In DRY-RUN it only computes which provider WOULD be active
+    // and logs it. Skipped entirely unless enabled + the NiceHash service is
+    // wired, so a Braiins-only install is byte-for-byte unaffected.
+    if (this.deps.providerEvalConfig?.enabled && this.deps.nicehashService) {
+      try {
+        await this.evaluateProvidersTick(state);
+      } catch (err) {
+        console.warn(`[provider] evaluation failed (non-fatal): ${(err as Error).message}`);
+      }
+    }
+
     const result: TickResult = { state, proposals, gated, executed };
     this.lastResult = result;
     return result;
   }
 
+  private async evaluateProvidersTick(state: State): Promise<void> {
+    const cfg = this.deps.providerEvalConfig!;
+    const svc = this.deps.nicehashService!;
+    const [algo, orders] = await Promise.all([
+      svc.getAlgorithm(cfg.algorithm),
+      svc.getOrderBook(cfg.algorithm),
+    ]);
+
+    const prev: ProviderSelectState = {
+      activeProvider: this.activeProvider,
+      challengerReadySince: this.challengerReadySince,
+    };
+    const evald: EvaluateProvidersResult = evaluateProviders({
+      braiinsFillableSatPerEhDay: state.fillable_ask_sat_per_eh_day,
+      nicehashOrders: orders,
+      nicehashMarketFactor: algo?.marketFactor ?? null,
+      ...(cfg.market ? { nicehashMarket: cfg.market } : {}),
+      nicehashMinDeliveredPh: cfg.minDeliveredPh,
+      overpaySatPerPhDay: state.config.overpay_sat_per_eh_day / 1000,
+      braiinsFeePct: cfg.braiinsFeePct,
+      nicehashFeePct: cfg.nicehashFeePct,
+      switchConfig: {
+        switchThresholdPct: cfg.switchThresholdPct,
+        sustainedWindowMinutes: cfg.sustainedWindowMinutes,
+      },
+      prevProviderState: prev,
+      now: state.tick_at,
+    });
+
+    this.activeProvider = evald.selection.activeProvider;
+    this.challengerReadySince = evald.selection.challengerReadySince;
+    this.lastProviderEvaluation = {
+      at: state.tick_at,
+      activeProvider: evald.selection.activeProvider,
+      braiinsEffectiveSatPerPhDay: evald.braiinsEffectiveSatPerPhDay,
+      nicehashEffectiveSatPerPhDay: evald.nicehashEffectiveSatPerPhDay,
+      braiinsCostSatPerPhDay: evald.braiinsCostSatPerPhDay,
+      nicehashCostSatPerPhDay: evald.nicehashCostSatPerPhDay,
+      nicehashAdvantagePct: evald.selection.nicehashAdvantagePct,
+      switched: evald.selection.switched,
+      reason: evald.selection.reason,
+    };
+
+    if (evald.selection.switched) {
+      console.info(`[provider] SWITCH: ${evald.selection.reason}`);
+    } else {
+      console.debug(`[provider] ${evald.selection.reason}`);
+    }
+  }
+
   getLastResult(): TickResult | null {
     return this.lastResult;
+  }
+
+  /** Latest dual-provider evaluation for /api/status. null until the first evaluated tick. */
+  getProviderEvaluation(): ProviderEvaluationSnapshot | null {
+    return this.lastProviderEvaluation;
   }
 }

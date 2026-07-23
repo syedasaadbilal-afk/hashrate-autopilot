@@ -94,8 +94,12 @@ export const AppConfigSchema = z.object({
   // chase the market: higher = more headroom against tick-to-tick
   // upward moves (safer fills, bigger premium); lower = closer to the
   // cheapest fillable price (lower cost, more sensitive to noise).
-  // Default 1_000_000 sat/EH/day = 1,000 sat/PH/day.
-  overpay_sat_per_eh_day: positiveInt.default(1_000_000),
+  // Default 100_000 sat/EH/day = 100 sat/PH/day (#dual-provider): bid just
+  // above the cheapest filling order rather than 1,000 sat/PH/day above it,
+  // so both Braiins and NiceHash sit as close to the fill line as the
+  // operator is comfortable with. Live-editable - raise it back toward
+  // 1,000 for more headroom against order-book jitter if fills get flaky.
+  overpay_sat_per_eh_day: positiveInt.default(100_000),
 
   // #222: EDIT_PRICE deadband as a percentage of overpay. The deadband
   // computed in decide.ts is `max(tick_size, overpay × pct / 100)`. If
@@ -594,8 +598,9 @@ export const APP_CONFIG_DEFAULTS: Omit<
   // today is ~46,000 sat/PH/day, so a 2,000 premium caps at ~48,000 which
   // is comfortably below the fixed cap without being overly tight.
   max_overpay_vs_hashprice_sat_per_eh_day: 2_000_000, // 2,000 sat/PH/day
-  // Pay-your-bid overpay above fillable_ask (#53). 1,000 sat/PH/day.
-  overpay_sat_per_eh_day: 1_000_000,
+  // Pay-your-bid overpay above fillable_ask (#53). 100 sat/PH/day
+  // (#dual-provider): bid just above the cheapest filling order. Live-editable.
+  overpay_sat_per_eh_day: 100_000,
   // #222: 20 reproduces the legacy hard-coded overpay/5 = 20% deadband.
   bid_edit_deadband_pct: 20,
   // #222: 0 = halt on any non-zero fee_rate_pct (matches existing

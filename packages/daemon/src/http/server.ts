@@ -69,6 +69,7 @@ import { registerRewardEventsRoute } from './routes/reward-events.js';
 import { registerRunModeRoute } from './routes/run-mode.js';
 import { registerStatsRoute } from './routes/stats.js';
 import { registerStatusRoute } from './routes/status.js';
+import { registerProviderRoute } from './routes/provider.js';
 import { registerStorageEstimateRoute } from './routes/storage-estimate.js';
 import { registerDdnsRoute } from './routes/ddns.js';
 import { registerDdnsTestRoute } from './routes/ddns-test.js';
@@ -265,6 +266,7 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
 
   await registerBuildRoute(app);
   await registerStatusRoute(app, deps);
+  await registerProviderRoute(app, deps);
   await registerDecisionsRoutes(app, deps);
   await registerConfigRoutes(app, deps);
   // #332: in-app credential rotation (password + Braiins tokens).

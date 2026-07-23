@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.17.4"
+version: "1.18.0"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,11 +53,10 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
-  v1.17.4 - stability: the daemon no longer crashes when the Electrum connection drops.
+  v1.18.0 - NiceHash dual-provider evaluation (DRY-RUN / observe-only).
 
-  FIXED
-  - No more crash-loop on a flaky Electrum connection: if your Electrum server (electrs, Fulcrum, or ElectrumX) restarted or dropped an idle connection while the daemon was mid-request, the daemon could crash and restart in a loop, spamming Telegram. It now handles a dropped connection cleanly and retries, instead of crashing.
-  - Removed a misleading "Telegram 2FA tap required" note shown after placing a bid: the autopilot places bids through Braiins' API using your owner token, which needs no Telegram confirmation (that step exists only in Braiins' own web interface).
+  NEW
+  - The autopilot can now watch the NiceHash Hashpower marketplace alongside Braiins and log which one it would rent from, using the cheapest-fill-line price plus your overpay, a fees-included comparison, and a switch rule (default: NiceHash must be more than 3.25% cheaper, sustained for 10 minutes). This build is read-only: it places NO NiceHash orders - it only observes and reports, so you can confirm the edge is real before any live trading. Enable it by setting the NICEHASH_ environment variables (off by default; a build with it unset behaves exactly like 1.17.3). Watch it in the service logs or at GET /api/provider. See docs/dual-provider.md.
 
   v1.17.3 - Lightning payout amounts corrected; Bitaxe card respects your number format.
 
