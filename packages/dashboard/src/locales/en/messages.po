@@ -501,9 +501,17 @@ msgstr "Any Electrum-protocol server works: electrs, Fulcrum, ElectrumX. The def
 msgid "API DOWN"
 msgstr "API DOWN"
 
+#: src/pages/Config.tsx
+msgid "API key"
+msgstr "API key"
+
 #: src/pages/Status.tsx
 msgid "API reachable"
 msgstr "API reachable"
+
+#: src/pages/Config.tsx
+msgid "API secret"
+msgstr "API secret"
 
 #. placeholder {0}: datum.consecutive_failures
 #: src/pages/Status.tsx
@@ -1080,6 +1088,10 @@ msgstr "Braiins deposit lifecycle"
 msgid "Braiins doesn't allow changing a live bid's destination URL. Your config now points at a different host than the bid was created with - miners on this bid keep going to the old destination until you cancel and recreate. Cancel here, the next decision tick will create a fresh bid with the current URL automatically."
 msgstr "Braiins doesn't allow changing a live bid's destination URL. Your config now points at a different host than the bid was created with - miners on this bid keep going to the old destination until you cancel and recreate. Cancel here, the next decision tick will create a fresh bid with the current URL automatically."
 
+#: src/pages/Config.tsx
+msgid "Braiins fee"
+msgstr "Braiins fee"
+
 #: src/pages/Status.tsx
 msgid "Braiins fee above your threshold"
 msgstr "Braiins fee above your threshold"
@@ -1095,6 +1107,14 @@ msgstr "Braiins marketplace API - reachable when the last observe() read market/
 #: src/pages/Config.tsx
 msgid "Braiins marketplace empty for"
 msgstr "Braiins marketplace empty for"
+
+#: src/pages/Config.tsx
+msgid "Braiins marketplace fee, folded into the comparison (not the submitted bid). 0 during the fee-free beta; set it when Braiins introduces a fee so the threshold stays a pure switching margin."
+msgstr "Braiins marketplace fee, folded into the comparison (not the submitted bid). 0 during the fee-free beta; set it when Braiins introduces a fee so the threshold stays a pure switching margin."
+
+#: src/pages/Status.tsx
+msgid "Braiins price"
+msgstr "Braiins price"
 
 #: src/pages/Config.tsx
 msgid "Braiins rejected this token."
@@ -1464,6 +1484,10 @@ msgstr "Could not change the password."
 msgid "Could not load security settings."
 msgstr "Could not load security settings."
 
+#: src/pages/Config.tsx
+msgid "Could not save the NiceHash keys."
+msgstr "Could not save the NiceHash keys."
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -1662,6 +1686,10 @@ msgstr "deadband"
 msgid "Debug API"
 msgstr "Debug API"
 
+#: src/pages/Status.tsx
+msgid "Decision"
+msgstr "Decision"
+
 #: src/pages/Config.tsx
 msgid "Decision-log rows where the autopilot proposed at least one bid action. Rare (~10% of ticks) and high-value: this is the forensic record for \"why did the autopilot create / edit / cancel that bid?\" Cheap to keep long. Default 0 = keep forever."
 msgstr "Decision-log rows where the autopilot proposed at least one bid action. Rare (~10% of ticks) and high-value: this is the forensic record for \"why did the autopilot create / edit / cancel that bid?\" Cheap to keep long. Default 0 = keep forever."
@@ -1844,6 +1872,10 @@ msgstr "Dry Run"
 msgid "DRY RUN"
 msgstr "DRY RUN"
 
+#: src/pages/Config.tsx
+msgid "Dual-provider (NiceHash)"
+msgstr "Dual-provider (NiceHash)"
+
 #: src/components/AlertSpanTooltip.tsx
 msgid "Duration"
 msgstr "Duration"
@@ -2015,6 +2047,14 @@ msgstr "Enable debug API endpoint"
 #: src/pages/History.tsx
 msgid "Enable every filter chip (all groups)"
 msgstr "Enable every filter chip (all groups)"
+
+#: src/pages/Config.tsx
+msgid "Enable NiceHash"
+msgstr "Enable NiceHash"
+
+#: src/pages/Config.tsx
+msgid "Enter your NiceHash organization id, API key and API secret. They're stored encrypted and never leave your server. Enabling NiceHash itself (and its market, pool and budget) lives on the Config page. Keys take effect after the daemon restarts."
+msgstr "Enter your NiceHash organization id, API key and API secret. They're stored encrypted and never leave your server. Enabling NiceHash itself (and its market, pool and budget) lives on the Config page. Keys take effect after the daemon restarts."
 
 #: src/components/Bip110ScanCard.tsx
 msgid "Epoch"
@@ -2424,6 +2464,14 @@ msgid "How many sats we'd earn from the next block Ocean finds, assuming current
 msgstr "How many sats we'd earn from the next block Ocean finds, assuming current share_log holds. Equals (next_block_reward * share_log_pct / 100). Sanity-check vs a typical Ocean block reward (~3.13 BTC)."
 
 #: src/pages/Config.tsx
+msgid "How much BTC to add on each refill."
+msgstr "How much BTC to add on each refill."
+
+#: src/pages/Config.tsx
+msgid "How much hashrate to rent on the NiceHash order."
+msgstr "How much hashrate to rent on the NiceHash order."
+
+#: src/pages/Config.tsx
 msgid "How numbers and dates render in this browser. Month names follow the UI language picker (top-right). Saved locally - every operator can pick their own."
 msgstr "How numbers and dates render in this browser. Month names follow the UI language picker (top-right). Saved locally - every operator can pick their own."
 
@@ -2452,6 +2500,10 @@ msgstr "IDs: {0}"
 #: src/components/Bip110ScanCard.tsx
 msgid "if at least 55% of a difficulty epoch's blocks signal BIP 110 in their headers, the soft fork locks in at the next epoch boundary."
 msgstr "if at least 55% of a difficulty epoch's blocks signal BIP 110 in their headers, the soft fork locks in at the next epoch boundary."
+
+#: src/pages/Config.tsx
+msgid "Ignore NiceHash orders delivering at or below this when finding the fill line. 0 = count any order receiving hashrate (the confirmed rule). Raise it if a tiny stale order ever drags the fill line down."
+msgstr "Ignore NiceHash orders delivering at or below this when finding the fill line. 0 = count any order receiving hashrate (the confirmed rule). Raise it if a tiny stale order ever drags the fill line down."
 
 #: src/pages/Alerts.tsx
 msgid "important"
@@ -2506,6 +2558,10 @@ msgid "Informational. Off by default. When on, every block Ocean credits to your
 msgstr "Informational. Off by default. When on, every block Ocean credits to your payout address sends a small INFO message: block height, your share %, your credit, and progress toward the next 1,048,576-sat on-chain payout."
 
 #: src/pages/Config.tsx
+msgid "Initial BTC budget funded onto a new NiceHash order. NiceHash charges a fee to place a new order, so the autopilot keeps one order alive and refills it rather than recreating."
+msgstr "Initial BTC budget funded onto a new NiceHash order. NiceHash charges a fee to place a new order, so the autopilot keeps one order alive and refills it rather than recreating."
+
+#: src/pages/Config.tsx
 msgid "Instance label (optional)"
 msgstr "Instance label (optional)"
 
@@ -2548,6 +2604,10 @@ msgstr "Keep the Pool URL's hostname pointed at this box's current public IP. Re
 #: src/pages/Config.tsx
 msgid "Keep whatever run mode was active before the restart. PAUSED is demoted to DRY_RUN."
 msgstr "Keep whatever run mode was active before the restart. PAUSED is demoted to DRY_RUN."
+
+#: src/pages/Config.tsx
+msgid "Keys saved. They apply after the next daemon restart."
+msgstr "Keys saved. They apply after the next daemon restart."
 
 #: src/components/TilesBar.tsx
 msgid "kilo"
@@ -2766,6 +2826,10 @@ msgstr "marketplace filled"
 #: src/pages/Alerts.tsx
 msgid "marking…"
 msgstr "marking…"
+
+#: src/pages/Config.tsx
+msgid "Master switch. Off = Braiins-only, exactly as before. On = evaluate both marketplaces (and trade NiceHash when run mode is LIVE and a pool id is set)."
+msgstr "Master switch. Off = Braiins-only, exactly as before. On = evaluate both marketplaces (and trade NiceHash when run mode is LIVE and a pool id is set)."
 
 #: src/pages/Config.tsx
 msgid "Match - hostname is pointing at this box."
@@ -2993,6 +3057,66 @@ msgstr "Next month"
 #: src/pages/Status.tsx
 msgid "next payout"
 msgstr "next payout"
+
+#: src/pages/Status.tsx
+msgid "NiceHash advantage (fees in)"
+msgstr "NiceHash advantage (fees in)"
+
+#: src/pages/Config.tsx
+msgid "NiceHash algorithm"
+msgstr "NiceHash algorithm"
+
+#: src/pages/Config.tsx
+msgid "NiceHash algorithm enum. For the Bitcoin market this is SHA256ASICBOOST (all caps)."
+msgstr "NiceHash algorithm enum. For the Bitcoin market this is SHA256ASICBOOST (all caps)."
+
+#: src/pages/Config.tsx
+msgid "NiceHash currency market key. For SHA256AsicBoost this is BTC."
+msgstr "NiceHash currency market key. For SHA256AsicBoost this is BTC."
+
+#: src/pages/Config.tsx
+msgid "NiceHash fee"
+msgstr "NiceHash fee"
+
+#: src/pages/Config.tsx
+msgid "NiceHash fill-line dust floor"
+msgstr "NiceHash fill-line dust floor"
+
+#: src/pages/Config.tsx
+msgid "NiceHash market"
+msgstr "NiceHash market"
+
+#: src/pages/Config.tsx
+msgid "NiceHash marketplace fee, folded into the comparison the same way."
+msgstr "NiceHash marketplace fee, folded into the comparison the same way."
+
+#: src/pages/Config.tsx
+msgid "NiceHash must be strictly more than this percent cheaper than Braiins (fees included) to win. Below it, Braiins stays. A pure switching margin, separate from the fees below."
+msgstr "NiceHash must be strictly more than this percent cheaper than Braiins (fees included) to win. Below it, Braiins stays. A pure switching margin, separate from the fees below."
+
+#: src/pages/Config.tsx
+msgid "NiceHash order budget"
+msgstr "NiceHash order budget"
+
+#: src/pages/Config.tsx
+msgid "NiceHash pool id"
+msgstr "NiceHash pool id"
+
+#: src/pages/Status.tsx
+msgid "NiceHash price"
+msgstr "NiceHash price"
+
+#: src/pages/Config.tsx
+msgid "NiceHash refill amount"
+msgstr "NiceHash refill amount"
+
+#: src/pages/Config.tsx
+msgid "NiceHash refill threshold"
+msgstr "NiceHash refill threshold"
+
+#: src/pages/Config.tsx
+msgid "NiceHash target hashrate"
+msgstr "NiceHash target hashrate"
 
 #: src/pages/Status.tsx
 msgid "No action needed this tick."
@@ -3378,6 +3502,10 @@ msgid "Order, separators, 12h vs 24h. Month names always follow your UI language
 msgstr "Order, separators, 12h vs 24h. Month names always follow your UI language."
 
 #: src/pages/Config.tsx
+msgid "Organization id"
+msgstr "Organization id"
+
+#: src/pages/Config.tsx
 msgid "Other (generic dyndns2)"
 msgstr "Other (generic dyndns2)"
 
@@ -3463,6 +3591,10 @@ msgstr "Owner token"
 #: src/pages/Status.tsx
 msgid "paid earnings (lifetime)"
 msgstr "paid earnings (lifetime)"
+
+#: src/pages/Config.tsx
+msgid "Park margin"
+msgstr "Park margin"
 
 #: src/pages/Login.tsx
 msgid "password"
@@ -3838,6 +3970,10 @@ msgstr "protocol"
 msgid "Provider"
 msgstr "Provider"
 
+#: src/pages/Status.tsx
+msgid "Provider · NiceHash vs Braiins"
+msgstr "Provider · NiceHash vs Braiins"
+
 #: src/pages/Config.tsx
 msgid "provider error - try again later"
 msgstr "provider error - try again later"
@@ -3974,6 +4110,14 @@ msgstr "Remove device"
 #: src/components/TilesBar.tsx
 msgid "Remove this tile"
 msgstr "Remove this tile"
+
+#: src/pages/Config.tsx
+msgid "Rent from NiceHash instead of Braiins when it's cheaper. When enabled, the autopilot prices both marketplaces every tick and rents from whichever is cheaper past the switch threshold. It never places NiceHash orders unless the run mode is LIVE. API credentials are set in the package, not here."
+msgstr "Rent from NiceHash instead of Braiins when it's cheaper. When enabled, the autopilot prices both marketplaces every tick and rents from whichever is cheaper past the switch threshold. It never places NiceHash orders unless the run mode is LIVE. API credentials are set in the package, not here."
+
+#: src/pages/Status.tsx
+msgid "Renting from"
+msgstr "Renting from"
 
 #. placeholder {0}: d.count
 #: src/pages/History.tsx
@@ -4147,6 +4291,10 @@ msgstr "save"
 msgid "save failed:"
 msgstr "save failed:"
 
+#: src/pages/Config.tsx
+msgid "Save NiceHash keys"
+msgstr "Save NiceHash keys"
+
 #: src/components/EventNoteField.tsx
 msgid "saved"
 msgstr "saved"
@@ -4163,6 +4311,10 @@ msgstr "saved."
 #: src/pages/Config.tsx
 msgid "saving…"
 msgstr "saving…"
+
+#: src/pages/Config.tsx
+msgid "Saving…"
+msgstr "Saving…"
 
 #: src/components/Bip110ScanCard.tsx
 msgid "Scan"
@@ -4263,6 +4415,10 @@ msgstr "Sending…"
 #: src/pages/Config.tsx
 msgid "sent · check Telegram"
 msgstr "sent · check Telegram"
+
+#: src/pages/Config.tsx
+msgid "Set NiceHash API keys"
+msgstr "Set NiceHash API keys"
 
 #: src/pages/Setup.tsx
 msgid "Setting up…"
@@ -4458,6 +4614,18 @@ msgid "Swap tile"
 msgstr "Swap tile"
 
 #: src/pages/Config.tsx
+msgid "Switch sustained window"
+msgstr "Switch sustained window"
+
+#: src/pages/Config.tsx
+msgid "Switch threshold"
+msgstr "Switch threshold"
+
+#: src/pages/Status.tsx
+msgid "switched this tick"
+msgstr "switched this tick"
+
+#: src/pages/Config.tsx
 msgid "system default"
 msgstr "system default"
 
@@ -4548,6 +4716,10 @@ msgstr "The bid tracks the cheapest ask with enough depth for your target, plus 
 msgid "The BTC address Ocean TIDES credits payouts to. Editing this auto-updates the worker identity below."
 msgstr "The BTC address Ocean TIDES credits payouts to. Editing this auto-updates the worker identity below."
 
+#: src/pages/Config.tsx
+msgid "The cheaper provider must hold its edge continuously for this many minutes before the autopilot actually switches. Prevents flapping between exchanges (each switch has real downtime)."
+msgstr "The cheaper provider must hold its edge continuously for this many minutes before the autopilot actually switches. Prevents flapping between exchanges (each switch has real downtime)."
+
 #: src/pages/Setup.tsx
 msgid "The daemon may not be in setup mode. Reload the page or check the daemon logs."
 msgstr "The daemon may not be in setup mode. Reload the page or check the daemon logs."
@@ -4563,6 +4735,10 @@ msgstr "The new password and its confirmation don't match."
 #: src/pages/Config.tsx
 msgid "The new token is tested against Braiins before it's saved, so a typo can't disable order authorization. It takes effect after the daemon restarts."
 msgstr "The new token is tested against Braiins before it's saved, so a typo can't disable order authorization. It takes effect after the daemon restarts."
+
+#: src/pages/Config.tsx
+msgid "The NiceHash pool resource id that points at your DATUM gateway. Empty = evaluation only, no NiceHash trading even in LIVE."
+msgstr "The NiceHash pool resource id that points at your DATUM gateway. Empty = evaluation only, no NiceHash trading even in LIVE."
 
 #: src/pages/Status.tsx
 msgid "The part of collected that settled on-chain (has a transaction on the blockchain)."
@@ -4646,6 +4822,10 @@ msgstr "Today"
 #: src/pages/Config.tsx
 msgid "Token saved. It applies after the next daemon restart."
 msgstr "Token saved. It applies after the next daemon restart."
+
+#: src/pages/Config.tsx
+msgid "Top the NiceHash order back up when its remaining budget drops below this many BTC."
+msgstr "Top the NiceHash order back up when its remaining budget drops below this many BTC."
 
 #: src/pages/Status.tsx
 msgid "total"
@@ -4900,6 +5080,10 @@ msgstr "When (UTC)"
 #: src/pages/Config.tsx
 msgid "When any active bid carries a fee_rate_pct above this, the mutation gate blocks CREATE_BID, EDIT_PRICE, and EDIT_SPEED. CANCEL_BID is still allowed so you (or the Datum-down auto-cancel) can bail out of a fee-bearing bid. Default 0 = halt the moment Braiins exits beta and charges any fee at all, matching the existing beta_exit Telegram alert. Set higher (e.g. 0.5) to tolerate a known fee without stopping the autopilot."
 msgstr "When any active bid carries a fee_rate_pct above this, the mutation gate blocks CREATE_BID, EDIT_PRICE, and EDIT_SPEED. CANCEL_BID is still allowed so you (or the Datum-down auto-cancel) can bail out of a fee-bearing bid. Default 0 = halt the moment Braiins exits beta and charges any fee at all, matching the existing beta_exit Telegram alert. Set higher (e.g. 0.5) to tolerate a known fee without stopping the autopilot."
+
+#: src/pages/Config.tsx
+msgid "When idling the losing provider's order, drop its price this far below the fill line so it stops filling at zero cost."
+msgstr "When idling the losing provider's order, drop its price this far below the fill line so it stops filling at zero cost."
 
 #: src/pages/Config.tsx
 msgid "When more than this many markers would render on the price chart, the dashboard hides EDIT_PRICE markers first (CREATE / EDIT_SPEED / CANCEL stay because they're rare and diagnostic). If even after hiding EDIT_PRICE the count still exceeds the cap, all markers are hidden. 0 = no count-based filter (all markers render subject to the existing per-range rule). Useful at low-overpay settings where EDIT_PRICE fires every couple of minutes and clutters the chart."

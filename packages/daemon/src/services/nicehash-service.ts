@@ -144,17 +144,37 @@ export class NiceHashService {
         return !dead;
       });
       const order = active[0];
-      if (!order) return none;
+      if (!order) {
+        // Distinguish "no orders at all" from "orders exist but all looked
+        // dead" - the latter means the status filter didn't recognise the
+        // live order and the autopilot would wrongly try to CREATE a new one.
+        if (list.length > 0) {
+          console.info(
+            `[nicehash] order snapshot: none active out of ${list.length} returned; ` +
+              `statuses=${list.map((o) => (o.status as { code?: string } | undefined)?.code ?? '?').join(',')}`,
+          );
+        } else {
+          console.info('[nicehash] order snapshot: no orders returned for this algorithm/market');
+        }
+        return none;
+      }
       const priceBtc = Number(order.price);
       const amount = Number(order.amount ?? 0);
       const payed = Number(order.payedAmount ?? 0);
       const remainingBtc = Number.isFinite(amount) && Number.isFinite(payed) ? amount - payed : null;
+      const priceSat = Number.isFinite(priceBtc) ? priceToSatPerPhDay(priceBtc, marketFactor) : null;
+      // One-line validation snapshot: lets an operator confirm (in DRY-RUN,
+      // before going LIVE) that the daemon parses their real order correctly -
+      // the id/price/remaining should match what NiceHash's own UI shows.
+      console.info(
+        `[nicehash] order snapshot: id=${order.id} price=${priceSat ?? '?'} sat/PH/day ` +
+          `remainingBtc=${remainingBtc ?? '?'} status=${(order.status as { code?: string } | undefined)?.code ?? '?'} ` +
+          `raw=${JSON.stringify(order)}`,
+      );
       return {
         exists: true,
         orderId: order.id,
-        currentPriceSatPerPhDay: Number.isFinite(priceBtc)
-          ? priceToSatPerPhDay(priceBtc, marketFactor)
-          : null,
+        currentPriceSatPerPhDay: priceSat,
         remainingBtc,
         raw: order,
       };
