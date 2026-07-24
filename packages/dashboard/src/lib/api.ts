@@ -544,6 +544,21 @@ export interface AppConfig {
   // #170 follow-up: operator-entered offset for pre-installation / off-chain earnings; added to lifetime-earnings chart and net P&L. Always >= 0.
   historical_payouts_offset_sat: number;
   debug_api_enabled: boolean;
+  // #dual-provider (NiceHash) live-editable tunables.
+  nicehash_enabled: boolean;
+  nicehash_algorithm: string;
+  nicehash_market: string;
+  nicehash_pool_id: string;
+  provider_switch_threshold_pct: number;
+  provider_switch_sustained_window_minutes: number;
+  nicehash_min_delivered_ph: number;
+  braiins_fee_pct: number;
+  nicehash_fee_pct: number;
+  nicehash_target_hashrate_ph: number;
+  nicehash_create_amount_btc: number;
+  nicehash_refill_threshold_btc: number;
+  nicehash_refill_amount_btc: number;
+  park_margin_sat_per_ph_day: number;
 }
 
 export interface ConfigResponse {

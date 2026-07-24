@@ -14,41 +14,29 @@
 
 
 import { decide } from './decide.js';
+import { decideNicehash } from './decide-nicehash.js';
 import { evaluateProviders, type EvaluateProvidersResult } from './evaluate-providers.js';
 import { execute, type ExecuteDeps } from './execute.js';
+import { executeNicehash } from './execute-nicehash.js';
 import { gate } from './gate.js';
 import { observe, type ObserveDeps } from './observe.js';
+import { computeParkPrice } from './park.js';
 import { decidePauseEvent } from './pause-events.js';
 import type { Provider, ProviderSelectState } from './provider-select.js';
-import type { NiceHashService } from '../services/nicehash-service.js';
+import type { NiceHashLiveParams, NiceHashService } from '../services/nicehash-service.js';
 import type { ExecutionResult, GateOutcome, Proposal, State } from './types.js';
-
-/**
- * Dual-provider settings for the DRY-RUN evaluation (#dual-provider). Sourced
- * from environment variables in main.ts for this first cut (no config-table
- * migration); live-editable config + persistence come later. When
- * `enabled` is false the whole block is skipped and the daemon behaves
- * exactly as the Braiins-only build.
- */
-export interface ProviderEvalConfig {
-  readonly enabled: boolean;
-  readonly algorithm: string;
-  readonly market: string;
-  readonly switchThresholdPct: number;
-  readonly sustainedWindowMinutes: number;
-  readonly minDeliveredPh: number;
-  readonly braiinsFeePct: number;
-  readonly nicehashFeePct: number;
-}
 
 export interface TickDeps extends ObserveDeps, ExecuteDeps {
   // `tickMetricsRepo` is inherited from ObserveDeps (#50).
   /** Sync read of the latest hashprice from Ocean stats (sat/PH/day). */
   readonly getHashprice?: () => number | null;
-  /** Optional NiceHash read service; present only when dual-provider is enabled. */
+  /**
+   * NiceHash read+trade service. Constructed in main.ts from the env-held API
+   * credentials (org id / key / secret). When present AND config.nicehash_enabled
+   * is true, the dual-provider evaluation + order maintenance run each tick.
+   * All other tunables come from the live-editable config table.
+   */
   readonly nicehashService?: NiceHashService;
-  /** Dual-provider evaluation config (env-sourced). Absent = feature off. */
-  readonly providerEvalConfig?: ProviderEvalConfig;
 }
 
 /** The latest dual-provider evaluation, surfaced to the status API. */
@@ -126,6 +114,9 @@ export class Controller {
       manualOverrideUntilMs: null,
       hashpriceSatPerPhDay: this.deps.getHashprice?.() ?? null,
       bypassPacing: false,
+      // One tick behind (updated at the end of the previous tick's provider
+      // evaluation) - bounds the handover lag to one tick.
+      activeProvider: this.activeProvider,
     });
     this.belowFloorSince = state.below_floor_since;
     this.aboveFloorTicks = state.above_floor_ticks;
@@ -337,7 +328,7 @@ export class Controller {
     // path above. In DRY-RUN it only computes which provider WOULD be active
     // and logs it. Skipped entirely unless enabled + the NiceHash service is
     // wired, so a Braiins-only install is byte-for-byte unaffected.
-    if (this.deps.providerEvalConfig?.enabled && this.deps.nicehashService) {
+    if (state.config.nicehash_enabled && this.deps.nicehashService) {
       try {
         await this.evaluateProvidersTick(state);
       } catch (err) {
@@ -351,12 +342,14 @@ export class Controller {
   }
 
   private async evaluateProvidersTick(state: State): Promise<void> {
-    const cfg = this.deps.providerEvalConfig!;
+    // All tunables come from the live-editable config table (edit them on the
+    // dashboard Config page - no rebuild). Only the API credentials live in env.
+    const cfg = state.config;
     const svc = this.deps.nicehashService!;
     // One public request returns the whole book for the market, already
     // carrying its own authoritative marketFactor - no separate algorithm
     // lookup, and the market is selected here so no further filtering needed.
-    const book = await svc.getMarketBook(cfg.algorithm, cfg.market || undefined);
+    const book = await svc.getMarketBook(cfg.nicehash_algorithm, cfg.nicehash_market || undefined);
 
     const prev: ProviderSelectState = {
       activeProvider: this.activeProvider,
@@ -366,13 +359,13 @@ export class Controller {
       braiinsFillableSatPerEhDay: state.fillable_ask_sat_per_eh_day,
       nicehashOrders: book?.orders ?? null,
       nicehashMarketFactor: book?.marketFactor ?? null,
-      nicehashMinDeliveredPh: cfg.minDeliveredPh,
-      overpaySatPerPhDay: state.config.overpay_sat_per_eh_day / 1000,
-      braiinsFeePct: cfg.braiinsFeePct,
-      nicehashFeePct: cfg.nicehashFeePct,
+      nicehashMinDeliveredPh: cfg.nicehash_min_delivered_ph,
+      overpaySatPerPhDay: cfg.overpay_sat_per_eh_day / 1000,
+      braiinsFeePct: cfg.braiins_fee_pct,
+      nicehashFeePct: cfg.nicehash_fee_pct,
       switchConfig: {
-        switchThresholdPct: cfg.switchThresholdPct,
-        sustainedWindowMinutes: cfg.sustainedWindowMinutes,
+        switchThresholdPct: cfg.provider_switch_threshold_pct,
+        sustainedWindowMinutes: cfg.provider_switch_sustained_window_minutes,
       },
       prevProviderState: prev,
       now: state.tick_at,
@@ -396,6 +389,58 @@ export class Controller {
       console.info(`[provider] SWITCH: ${evald.selection.reason}`);
     } else {
       console.debug(`[provider] ${evald.selection.reason}`);
+    }
+
+    // ---- NiceHash order maintenance (LIVE-gated) --------------------------
+    // Only when a pool id is configured (LIVE-capable) and the book priced.
+    // decideNicehash produces the create/refill/edit/park/cancel actions;
+    // executeNicehash runs them ONLY in run_mode LIVE - in DRY-RUN it logs the
+    // parsed order snapshot + "would" actions so the reconcile can be verified
+    // against a real order before any BTC moves.
+    if (cfg.nicehash_pool_id && book && book.marketFactor > 0) {
+      try {
+        const snapshot = await svc.getMyOrder(cfg.nicehash_algorithm, book.market, book.marketFactor);
+        console.info(
+          `[nicehash] order snapshot: exists=${snapshot.exists} id=${snapshot.orderId ?? '-'} ` +
+            `price=${snapshot.currentPriceSatPerPhDay === null ? '-' : Math.round(snapshot.currentPriceSatPerPhDay)} sat/PH/day ` +
+            `remaining=${snapshot.remainingBtc === null ? '-' : snapshot.remainingBtc.toFixed(8)} BTC`,
+        );
+        const parkPrice =
+          evald.nicehashFillLineSatPerPhDay !== null
+            ? computeParkPrice({
+                fillLineSatPerPhDay: evald.nicehashFillLineSatPerPhDay,
+                marginSatPerPhDay: cfg.park_margin_sat_per_ph_day,
+              })
+            : null;
+        const actions = decideNicehash({
+          providerActive: evald.selection.activeProvider === 'NICEHASH',
+          desiredPriceSatPerPhDay: evald.nicehashEffectiveSatPerPhDay,
+          parkPriceSatPerPhDay: parkPrice,
+          order: {
+            exists: snapshot.exists,
+            orderId: snapshot.orderId,
+            currentPriceSatPerPhDay: snapshot.currentPriceSatPerPhDay,
+            remainingBtc: snapshot.remainingBtc,
+            // NiceHash enforces the 10-min decrease cooldown server-side, so a
+            // too-soon decrease is simply rejected and logged - we don't track it.
+            lastDecreaseAtMs: null,
+          },
+          refillThresholdBtc: cfg.nicehash_refill_threshold_btc,
+          refillAmountBtc: cfg.nicehash_refill_amount_btc,
+          createAmountBtc: cfg.nicehash_create_amount_btc,
+          now: state.tick_at,
+        });
+        const params: NiceHashLiveParams = {
+          algorithm: cfg.nicehash_algorithm,
+          market: book.market,
+          poolId: cfg.nicehash_pool_id,
+          marketFactor: book.marketFactor,
+          displayMarketFactor: book.displayMarketFactor,
+        };
+        await executeNicehash(svc, actions, state.run_mode, params, cfg.nicehash_target_hashrate_ph);
+      } catch (err) {
+        console.warn(`[nicehash] order maintenance failed (non-fatal): ${(err as Error).message}`);
+      }
     }
   }
 

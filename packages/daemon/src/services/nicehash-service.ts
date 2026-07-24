@@ -17,10 +17,37 @@
 
 import {
   extractMarketBook,
+  phToSpeedUnits,
+  priceToSatPerPhDay,
+  satPerPhDayToPrice,
   type MarketBook,
   type NiceHashAlgorithm,
   type NiceHashClient,
 } from '@hashrate-autopilot/nicehash-client';
+
+/**
+ * Our current NiceHash order for the algo/market, reconciled from the API
+ * each tick (NiceHash is the source of truth - no local ledger, mirroring how
+ * the Braiins side reconciles owned bids from /spot/bid). null price/remaining
+ * when the shape couldn't be parsed - logged verbosely so a DRY-RUN soak
+ * reveals any shape mismatch before real money moves.
+ */
+export interface NiceHashOrderSnapshot {
+  readonly exists: boolean;
+  readonly orderId: string | null;
+  readonly currentPriceSatPerPhDay: number | null;
+  readonly remainingBtc: number | null;
+  /** Raw order object, for diagnostics in the DRY-RUN validation logs. */
+  readonly raw?: unknown;
+}
+
+export interface NiceHashLiveParams {
+  readonly algorithm: string;
+  readonly market: string;
+  readonly poolId: string;
+  readonly marketFactor: number;
+  readonly displayMarketFactor: string;
+}
 
 interface CachedValue<T> {
   value: T;
@@ -85,6 +112,104 @@ export class NiceHashService {
       console.warn(`[nicehash] getMarketBook(${algorithm}) failed: ${(err as Error).message}`);
       return null;
     }
+  }
+
+  /**
+   * Our current order for the algo/market, from GET myOrders. Parsed
+   * defensively because the authenticated response shape is unverified - the
+   * raw order is attached so a DRY-RUN log can confirm the fields before LIVE.
+   * `marketFactor` (from the order book this tick) converts the order price to
+   * sat/PH/day. Returns exists:false when we have no active order.
+   */
+  async getMyOrder(
+    algorithm: string,
+    market: string,
+    marketFactor: number,
+  ): Promise<NiceHashOrderSnapshot> {
+    const none: NiceHashOrderSnapshot = {
+      exists: false,
+      orderId: null,
+      currentPriceSatPerPhDay: null,
+      remainingBtc: null,
+    };
+    try {
+      const resp = await this.client.getMyOrders(algorithm, market);
+      this.lastApiOkAt = this.now();
+      const list = Array.isArray(resp.list) ? resp.list : [];
+      // "Active" = alive and not cancelled/completed. Be permissive: any order
+      // that isn't clearly dead counts, so we never place a duplicate.
+      const active = list.filter((o) => {
+        const status = (o.status as { code?: string } | undefined)?.code ?? '';
+        const dead = /CANCELLED|COMPLETED|DEAD|EXPIRED/i.test(status) || o.alive === false;
+        return !dead;
+      });
+      const order = active[0];
+      if (!order) return none;
+      const priceBtc = Number(order.price);
+      const amount = Number(order.amount ?? 0);
+      const payed = Number(order.payedAmount ?? 0);
+      const remainingBtc = Number.isFinite(amount) && Number.isFinite(payed) ? amount - payed : null;
+      return {
+        exists: true,
+        orderId: order.id,
+        currentPriceSatPerPhDay: Number.isFinite(priceBtc)
+          ? priceToSatPerPhDay(priceBtc, marketFactor)
+          : null,
+        remainingBtc,
+        raw: order,
+      };
+    } catch (err) {
+      console.warn(`[nicehash] getMyOrder(${algorithm}/${market}) failed: ${(err as Error).message}`);
+      return none;
+    }
+  }
+
+  // ---- Mutations (LIVE only; the tick gates these on run_mode) --------------
+
+  async createOrder(
+    p: NiceHashLiveParams,
+    priceSatPerPhDay: number,
+    targetPh: number,
+    amountBtc: number,
+  ): Promise<string> {
+    const res = await this.client.createOrder({
+      market: p.market,
+      algorithm: p.algorithm,
+      amountBtc,
+      priceBtcPerUnitPerDay: satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
+      limitSpeedUnits: phToSpeedUnits(targetPh, p.marketFactor),
+      poolId: p.poolId,
+      marketFactor: p.marketFactor,
+      displayMarketFactor: p.displayMarketFactor,
+    });
+    this.lastApiOkAt = this.now();
+    return res.id;
+  }
+
+  async editOrderPrice(
+    p: NiceHashLiveParams,
+    orderId: string,
+    priceSatPerPhDay: number,
+    targetPh: number,
+  ): Promise<void> {
+    await this.client.editOrderPriceAndLimit({
+      orderId,
+      priceBtcPerUnitPerDay: satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
+      limitSpeedUnits: phToSpeedUnits(targetPh, p.marketFactor),
+      marketFactor: p.marketFactor,
+      displayMarketFactor: p.displayMarketFactor,
+    });
+    this.lastApiOkAt = this.now();
+  }
+
+  async refillOrder(orderId: string, amountBtc: number): Promise<void> {
+    await this.client.refillOrder({ orderId, amountBtc });
+    this.lastApiOkAt = this.now();
+  }
+
+  async cancelOrder(orderId: string): Promise<void> {
+    await this.client.cancelOrder(orderId);
+    this.lastApiOkAt = this.now();
   }
 
   getLastApiOkAt(): number | null {

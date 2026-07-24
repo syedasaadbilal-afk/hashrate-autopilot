@@ -560,6 +560,38 @@ export const AppConfigSchema = z.object({
   // info. Off by default so the endpoint returns 404 and doesn't
   // expand the attack surface for operators who never need it.
   debug_api_enabled: z.boolean().default(false),
+
+  // --- #dual-provider (NiceHash) live-editable tunables -------------------
+  // Credentials (org id / key / secret) stay in env; everything else lives
+  // here so it's editable from the dashboard Config page without a rebuild.
+  /** Master switch. false = Braiins-only. */
+  nicehash_enabled: z.boolean().default(false),
+  /** NiceHash algorithm enum (BTC market = SHA256ASICBOOST). */
+  nicehash_algorithm: z.string().default('SHA256ASICBOOST'),
+  /** NiceHash currency market key (SHA256AsicBoost = BTC). */
+  nicehash_market: z.string().default('BTC'),
+  /** NiceHash pool resource id pointing at your DATUM gateway. Empty = LIVE NiceHash off. */
+  nicehash_pool_id: z.string().default(''),
+  /** NiceHash must be strictly this % cheaper than Braiins to win the switch. */
+  provider_switch_threshold_pct: z.number().nonnegative().default(3.25),
+  /** Challenger must hold its edge this many minutes before an actual switch. */
+  provider_switch_sustained_window_minutes: nonNegativeInt.default(10),
+  /** Dust floor (PH/s) for the NiceHash fill line. 0 = literal confirmed rule. */
+  nicehash_min_delivered_ph: z.number().nonnegative().default(0),
+  /** Braiins fee % folded into the switch comparison (0 during beta). */
+  braiins_fee_pct: z.number().nonnegative().default(0),
+  /** NiceHash marketplace fee % folded into the switch comparison. */
+  nicehash_fee_pct: z.number().nonnegative().default(0),
+  /** Target hashrate for the NiceHash order, PH/s. */
+  nicehash_target_hashrate_ph: positiveNumber.default(1),
+  /** Initial BTC budget on the first NiceHash order. */
+  nicehash_create_amount_btc: z.number().nonnegative().default(0),
+  /** Refill the NiceHash order when its remaining budget drops below this many BTC. */
+  nicehash_refill_threshold_btc: z.number().nonnegative().default(0),
+  /** How much BTC to top up per NiceHash refill. */
+  nicehash_refill_amount_btc: z.number().nonnegative().default(0),
+  /** How far below the fill line to park an idle order/bid, sat/PH/day (both providers). */
+  park_margin_sat_per_ph_day: z.number().nonnegative().default(5000),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -700,4 +732,21 @@ export const APP_CONFIG_DEFAULTS: Omit<
   include_historical_payouts: true,
   historical_payouts_offset_sat: 0,
   debug_api_enabled: false,
+
+  // #dual-provider (NiceHash) - off by default; a fresh install behaves
+  // exactly like the Braiins-only build until the operator enables it.
+  nicehash_enabled: false,
+  nicehash_algorithm: 'SHA256ASICBOOST',
+  nicehash_market: 'BTC',
+  nicehash_pool_id: '',
+  provider_switch_threshold_pct: 3.25,
+  provider_switch_sustained_window_minutes: 10,
+  nicehash_min_delivered_ph: 0,
+  braiins_fee_pct: 0,
+  nicehash_fee_pct: 0,
+  nicehash_target_hashrate_ph: 1,
+  nicehash_create_amount_btc: 0,
+  nicehash_refill_threshold_btc: 0,
+  nicehash_refill_amount_btc: 0,
+  park_margin_sat_per_ph_day: 5000,
 };

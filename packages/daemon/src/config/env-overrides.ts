@@ -291,6 +291,34 @@ const APP_CONFIG_ENV: {
     varName: 'BHA_DEBUG_API_ENABLED',
     coerce: asBoolean,
   },
+  // #dual-provider (NiceHash) - editable from the dashboard Config page;
+  // these BHA_ overrides let the package seed a default too.
+  nicehash_enabled: { varName: 'BHA_NICEHASH_ENABLED', coerce: asBoolean },
+  nicehash_algorithm: { varName: 'BHA_NICEHASH_ALGORITHM', coerce: asString },
+  nicehash_market: { varName: 'BHA_NICEHASH_MARKET', coerce: asString },
+  nicehash_pool_id: { varName: 'BHA_NICEHASH_POOL_ID', coerce: asString },
+  provider_switch_threshold_pct: {
+    varName: 'BHA_PROVIDER_SWITCH_THRESHOLD_PCT',
+    coerce: asNumber,
+  },
+  provider_switch_sustained_window_minutes: {
+    varName: 'BHA_PROVIDER_SWITCH_SUSTAINED_WINDOW_MINUTES',
+    coerce: asInt,
+  },
+  nicehash_min_delivered_ph: { varName: 'BHA_NICEHASH_MIN_DELIVERED_PH', coerce: asNumber },
+  braiins_fee_pct: { varName: 'BHA_BRAIINS_FEE_PCT', coerce: asNumber },
+  nicehash_fee_pct: { varName: 'BHA_NICEHASH_FEE_PCT', coerce: asNumber },
+  nicehash_target_hashrate_ph: {
+    varName: 'BHA_NICEHASH_TARGET_HASHRATE_PH',
+    coerce: asNumber,
+  },
+  nicehash_create_amount_btc: { varName: 'BHA_NICEHASH_CREATE_AMOUNT_BTC', coerce: asNumber },
+  nicehash_refill_threshold_btc: {
+    varName: 'BHA_NICEHASH_REFILL_THRESHOLD_BTC',
+    coerce: asNumber,
+  },
+  nicehash_refill_amount_btc: { varName: 'BHA_NICEHASH_REFILL_AMOUNT_BTC', coerce: asNumber },
+  park_margin_sat_per_ph_day: { varName: 'BHA_PARK_MARGIN_SAT_PER_PH_DAY', coerce: asNumber },
 };
 
 // ---------------------------------------------------------------------------

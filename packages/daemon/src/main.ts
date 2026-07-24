@@ -23,7 +23,6 @@ import { createBraiinsClient } from '@hashrate-autopilot/braiins-client';
 import { createNiceHashClient } from '@hashrate-autopilot/nicehash-client';
 
 import { NiceHashService } from './services/nicehash-service.js';
-import type { ProviderEvalConfig } from './controller/tick.js';
 
 import { applyEnvOverridesToConfig } from './config/env-overrides.js';
 import type { AppConfig, Secrets } from './config/schema.js';
@@ -483,22 +482,18 @@ async function bootOperational(
   const braiins = new BraiinsService({ client: braiinsClient });
   const poolTracker = new PoolHealthTracker();
 
-  // #dual-provider (DRY-RUN): construct the NiceHash read service + evaluation
-  // config from environment variables. Off unless NICEHASH_ENABLED=true and
-  // all three credentials are present, so a Braiins-only install is
-  // unaffected. Env-sourced (not the config table) for this first cut - see
-  // docs/dual-provider.md. Settings are read-only here; no orders are placed.
-  const envNum = (name: string, fallback: number): number => {
-    const raw = process.env[name];
-    const n = raw !== undefined ? Number(raw) : NaN;
-    return Number.isFinite(n) ? n : fallback;
-  };
-  const nicehashEnabled =
-    process.env.NICEHASH_ENABLED === 'true' &&
-    Boolean(process.env.NICEHASH_ORG_ID && process.env.NICEHASH_API_KEY && process.env.NICEHASH_API_SECRET);
+  // #dual-provider: construct the NiceHash service from the env-held API
+  // credentials (org id / key / secret) - the only NiceHash values that stay
+  // in env, since they're sensitive and set-once. Everything else (enable
+  // toggle, algorithm, market, pool id, target, budget, thresholds, fees,
+  // park margin) lives in the live-editable config table and is read per tick,
+  // so it's tunable from the dashboard Config page with no rebuild. The tick
+  // only runs the evaluation/trading when config.nicehash_enabled is true.
   let nicehashService: NiceHashService | undefined;
-  let providerEvalConfig: ProviderEvalConfig | undefined;
-  if (nicehashEnabled) {
+  const haveNicehashCreds = Boolean(
+    process.env.NICEHASH_ORG_ID && process.env.NICEHASH_API_KEY && process.env.NICEHASH_API_SECRET,
+  );
+  if (haveNicehashCreds) {
     const nicehashClient = createNiceHashClient({
       orgId: process.env.NICEHASH_ORG_ID,
       apiKey: process.env.NICEHASH_API_KEY,
@@ -506,21 +501,7 @@ async function bootOperational(
       ...(process.env.NICEHASH_BASE_URL ? { baseUrl: process.env.NICEHASH_BASE_URL } : {}),
     });
     nicehashService = new NiceHashService({ client: nicehashClient });
-    providerEvalConfig = {
-      enabled: true,
-      algorithm: process.env.NICEHASH_ALGORITHM ?? 'SHA256AsicBoost',
-      market: process.env.NICEHASH_MARKET ?? '',
-      switchThresholdPct: envNum('PROVIDER_SWITCH_THRESHOLD_PCT', 3.25),
-      sustainedWindowMinutes: envNum('PROVIDER_SWITCH_SUSTAINED_WINDOW_MINUTES', 10),
-      minDeliveredPh: envNum('NICEHASH_MIN_DELIVERED_PH', 0),
-      braiinsFeePct: envNum('BRAIINS_FEE_PCT', 0),
-      nicehashFeePct: envNum('NICEHASH_FEE_PCT', 0),
-    };
-    log(
-      `[provider] dual-provider evaluation ENABLED (DRY-RUN observe): algo=${providerEvalConfig.algorithm} ` +
-        `market=${providerEvalConfig.market || 'all'} threshold=${providerEvalConfig.switchThresholdPct}% ` +
-        `window=${providerEvalConfig.sustainedWindowMinutes}m`,
-    );
+    log('[provider] NiceHash credentials present - dual-provider available (enable from Config).');
   }
 
   // Optional Datum Gateway stats poller (issue #19). Reads datum_api_url
@@ -760,7 +741,6 @@ async function bootOperational(
     now: () => Date.now(),
     getHashprice: () => hashpriceCache.getFresh(HASHPRICE_STALENESS_MS),
     ...(nicehashService ? { nicehashService } : {}),
-    ...(providerEvalConfig ? { providerEvalConfig } : {}),
   });
   // Restore floor-tracking state so the escalation timer keeps counting
   // across daemon restarts (#11).

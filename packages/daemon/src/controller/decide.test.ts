@@ -168,6 +168,22 @@ describe('decide - Datum stratum down auto-cancel (#199)', () => {
     expect(proposals[0]!.reason).toContain('Datum stratum down');
   });
 
+  it('#dual-provider: cancels the Braiins bid when NiceHash is the active provider', () => {
+    const proposals = decide(state({
+      active_provider: 'NICEHASH',
+      owned_bids: [owned()],
+    }));
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({ kind: 'CANCEL_BID', braiins_order_id: 'order-a' });
+    expect(proposals[0]!.reason).toContain('active provider');
+  });
+
+  it('#dual-provider: absent/BRAIINS active_provider leaves Braiins behaviour unchanged', () => {
+    // No owned bid + Braiins active -> normal CREATE path (not a cancel).
+    const proposals = decide(state({ active_provider: 'BRAIINS' }));
+    expect(proposals[0]?.kind).toBe('CREATE_BID');
+  });
+
   it('cancels multiple owned bids when stratum is down', () => {
     const proposals = decide(state({
       pool: stratumDown(5),

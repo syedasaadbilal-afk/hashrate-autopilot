@@ -85,6 +85,24 @@ export function decide(state: State): readonly Proposal[] {
     }));
   }
 
+  // #dual-provider: when Braiins is NOT the active provider (NiceHash won the
+  // switch), stop Braiins spend by cancelling owned bids - the same proven
+  // mechanism as the Datum-down stop-spend above. Braiins new orders are free,
+  // so cancel-and-recreate on switch-back costs nothing; the NiceHash side is
+  // the one that PARKS (drops below fill) to dodge its ~1,000-sat new-order
+  // fee. Guarded on `active_provider` (absent = 'BRAIINS'), so single-provider
+  // behaviour is byte-for-byte unchanged.
+  const activeProvider = state.active_provider ?? 'BRAIINS';
+  if (activeProvider !== 'BRAIINS') {
+    const cancellable = state.owned_bids.filter((b) => !isPendingCancel(b));
+    if (cancellable.length === 0) return [];
+    return cancellable.map((bid) => ({
+      kind: 'CANCEL_BID' as const,
+      braiins_order_id: bid.braiins_order_id,
+      reason: `${activeProvider} is the active provider - cancel Braiins bid to stop spend (free to recreate on switch-back)`,
+    }));
+  }
+
   // No pool URL configured - can't create or maintain bids.
   if (!state.config.destination_pool_url) return [];
 

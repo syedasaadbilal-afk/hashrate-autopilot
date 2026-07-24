@@ -108,6 +108,11 @@ export interface ObserveInputs {
    * decide() to skip its self-imposed patience / escalation timers.
    */
   readonly bypassPacing: boolean;
+  /**
+   * #dual-provider: which marketplace is active (from the controller's
+   * in-memory provider selection, one tick behind). Absent = 'BRAIINS'.
+   */
+  readonly activeProvider?: import('./provider-select.js').Provider;
 }
 
 /**
@@ -589,6 +594,7 @@ export async function observe(deps: ObserveDeps, inputs: ObserveInputs): Promise
     fillable_ask_sat_per_eh_day,
     cheap_mode_window,
     bypass_pacing: inputs.bypassPacing,
+    active_provider: inputs.activeProvider ?? 'BRAIINS',
   };
 }
 

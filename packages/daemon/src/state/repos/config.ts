@@ -86,6 +86,8 @@ export class ConfigRepo {
       include_historical_payouts: rest.include_historical_payouts === 1,
       // #179: debug API toggle stored as 0/1, surfaced as boolean.
       debug_api_enabled: rest.debug_api_enabled === 1,
+      // #dual-provider: master toggle stored as 0/1, surfaced as boolean.
+      nicehash_enabled: rest.nicehash_enabled === 1,
       // #331: decrypt the secret config columns. A decrypt failure
       // (wrong/lost key) surfaces as "" so the operator re-enters it via
       // Config rather than the daemon booting with a broken credential.
@@ -143,6 +145,8 @@ export class ConfigRepo {
       include_historical_payouts: (validated.include_historical_payouts ? 1 : 0) as 0 | 1,
       // #179: debug API toggle stored as 0/1.
       debug_api_enabled: (validated.debug_api_enabled ? 1 : 0) as 0 | 1,
+      // #dual-provider: master toggle stored as 0/1.
+      nicehash_enabled: (validated.nicehash_enabled ? 1 : 0) as 0 | 1,
       // Legacy NOT NULL columns still in the DB - provide harmless defaults
       // so INSERT succeeds.
       emergency_max_bid_sat_per_eh_day: validated.max_bid_sat_per_eh_day,

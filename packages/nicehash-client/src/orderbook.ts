@@ -43,6 +43,8 @@ export interface MarketBook {
   readonly orders: readonly NiceHashOrderBookOrder[];
   /** Authoritative marketFactor (H/s per unit) for this market's prices/speeds. */
   readonly marketFactor: number;
+  /** Display unit for the marketFactor, e.g. "EH" - required verbatim on order mutations. */
+  readonly displayMarketFactor: string;
   /** Which market key was actually used (e.g. "BTC"). */
   readonly market: string;
 }
@@ -69,7 +71,12 @@ export function extractMarketBook(
   if (!ms) return null;
   const marketFactor = Number(ms.marketFactor);
   if (!Number.isFinite(marketFactor) || marketFactor <= 0) return null;
-  return { orders: ms.orders ?? [], marketFactor, market: key };
+  return {
+    orders: ms.orders ?? [],
+    marketFactor,
+    displayMarketFactor: ms.displayMarketFactor ?? 'EH',
+    market: key,
+  };
 }
 
 const H_PER_PH = 1e15;

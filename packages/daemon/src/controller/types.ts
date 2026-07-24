@@ -13,6 +13,7 @@ import type {
 } from '@hashrate-autopilot/braiins-client';
 import type { RunMode } from '@hashrate-autopilot/shared';
 
+import type { Provider } from './provider-select.js';
 import type { AppConfig } from '../config/schema.js';
 
 // ---------------------------------------------------------------------------
@@ -295,6 +296,14 @@ export interface State {
    * on server-side gates (Braiins cooldown, run_mode checks).
    */
   readonly bypass_pacing: boolean;
+
+  /**
+   * #dual-provider: which marketplace is currently active. When set to a value
+   * other than 'BRAIINS', decide() parks the Braiins bid (drops it below the
+   * fillable ask) so it stops filling while NiceHash runs. Optional / absent =
+   * treated as 'BRAIINS' (single-provider behaviour, preserving existing tests).
+   */
+  readonly active_provider?: Provider;
 }
 
 // ---------------------------------------------------------------------------
