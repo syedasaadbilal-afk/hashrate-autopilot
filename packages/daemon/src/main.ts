@@ -482,22 +482,27 @@ async function bootOperational(
   const braiins = new BraiinsService({ client: braiinsClient });
   const poolTracker = new PoolHealthTracker();
 
-  // #dual-provider: construct the NiceHash service from the env-held API
-  // credentials (org id / key / secret) - the only NiceHash values that stay
-  // in env, since they're sensitive and set-once. Everything else (enable
-  // toggle, algorithm, market, pool id, target, budget, thresholds, fees,
-  // park margin) lives in the live-editable config table and is read per tick,
-  // so it's tunable from the dashboard Config page with no rebuild. The tick
-  // only runs the evaluation/trading when config.nicehash_enabled is true.
+  // #dual-provider: construct the NiceHash service from the encrypted secrets
+  // (org id / key / secret) entered on the in-app Security page and stored in
+  // the DB secrets table - mirroring the Braiins-token pattern, so no NiceHash
+  // credential ever lives in the wrapper env or GitHub. Everything non-secret
+  // (enable toggle, algorithm, market, pool id, target, budget, thresholds,
+  // fees, park margin) lives in the live-editable config table and is read per
+  // tick, so it's tunable from the dashboard Config page with no rebuild. The
+  // tick only runs the evaluation/trading when config.nicehash_enabled is true.
+  //
+  // A BHA_NICEHASH_* env override is still honoured (secrets go through the
+  // same env-overlay as Braiins) for power-user / SOPS installs, but the
+  // appliance path is: type the keys on the Security page, restart.
   let nicehashService: NiceHashService | undefined;
   const haveNicehashCreds = Boolean(
-    process.env.NICEHASH_ORG_ID && process.env.NICEHASH_API_KEY && process.env.NICEHASH_API_SECRET,
+    secrets.nicehash_org_id && secrets.nicehash_api_key && secrets.nicehash_api_secret,
   );
   if (haveNicehashCreds) {
     const nicehashClient = createNiceHashClient({
-      orgId: process.env.NICEHASH_ORG_ID,
-      apiKey: process.env.NICEHASH_API_KEY,
-      apiSecret: process.env.NICEHASH_API_SECRET,
+      orgId: secrets.nicehash_org_id!,
+      apiKey: secrets.nicehash_api_key!,
+      apiSecret: secrets.nicehash_api_secret!,
       ...(process.env.NICEHASH_BASE_URL ? { baseUrl: process.env.NICEHASH_BASE_URL } : {}),
     });
     nicehashService = new NiceHashService({ client: nicehashClient });

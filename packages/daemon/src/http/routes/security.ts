@@ -119,4 +119,47 @@ export async function registerSecurityRoutes(
     // until then (documented in the UI).
     return { ok: true, applies_on_restart: true };
   });
+
+  // #dual-provider: set/replace the three NiceHash API credentials. Same
+  // guards as the Braiins rotation (db-sourced + current password). Stored
+  // encrypted; the NiceHash client is built at boot, so this takes effect on
+  // the next restart. Verify with a DRY-RUN order snapshot before going LIVE.
+  app.post<{
+    Body: {
+      current_password?: string;
+      org_id?: string;
+      api_key?: string;
+      api_secret?: string;
+    };
+  }>('/api/security/nicehash-keys', async (req, reply) => {
+    if (!editable) {
+      reply.code(409);
+      return { error: 'managed_externally', secret_source: deps.secretSource };
+    }
+    const {
+      current_password = '',
+      org_id = '',
+      api_key = '',
+      api_secret = '',
+    } = req.body ?? {};
+    if (!verifyPassword(current_password, deps.getCurrentPassword())) {
+      reply.code(403);
+      return { error: 'current password is incorrect' };
+    }
+    if (org_id.trim().length === 0 || api_key.trim().length === 0 || api_secret.trim().length === 0) {
+      reply.code(422);
+      return { error: 'org id, api key and api secret are all required' };
+    }
+    const ok = await deps.secretsRepo.setNicehashCredentials(
+      org_id.trim(),
+      api_key.trim(),
+      api_secret.trim(),
+    );
+    if (!ok) {
+      reply.code(409);
+      return { error: 'no stored secrets to update' };
+    }
+    deps.log?.('[security] nicehash credentials set (takes effect on restart)');
+    return { ok: true, applies_on_restart: true };
+  });
 }

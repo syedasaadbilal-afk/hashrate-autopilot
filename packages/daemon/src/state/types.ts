@@ -589,6 +589,9 @@ export interface SecretsTable {
   bitcoind_rpc_user: string | null;
   bitcoind_rpc_password: string | null;
   telegram_bot_token: string | null;
+  nicehash_org_id: string | null;
+  nicehash_api_key: string | null;
+  nicehash_api_secret: string | null;
   updated_at: number;
 }
 

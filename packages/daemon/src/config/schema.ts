@@ -36,6 +36,15 @@ export const SecretsSchema = z.object({
   bitcoind_rpc_user: nonEmptyString.optional(),
   bitcoind_rpc_password: nonEmptyString.optional(),
 
+  // #dual-provider: NiceHash API credentials. Optional so Braiins-only
+  // installs still validate; when all three are set the daemon builds the
+  // NiceHash client and dual-provider becomes available (still gated behind
+  // config.nicehash_enabled). Entered on the in-app Security page, stored
+  // encrypted in the DB secrets table - never in the wrapper env or GitHub.
+  nicehash_org_id: nonEmptyString.optional(),
+  nicehash_api_key: nonEmptyString.optional(),
+  nicehash_api_secret: nonEmptyString.optional(),
+
   // Shared password for the dashboard (second-gate; Tailscale is the real
   // perimeter per architecture §12 risk register).
   dashboard_password: nonEmptyString,

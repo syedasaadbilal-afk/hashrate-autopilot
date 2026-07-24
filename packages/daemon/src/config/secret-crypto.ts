@@ -23,6 +23,8 @@ export const SECRETS_ENCRYPTED_FIELDS = [
   'braiins_read_only_token',
   'bitcoind_rpc_password',
   'telegram_bot_token',
+  'nicehash_api_key',
+  'nicehash_api_secret',
 ] as const;
 
 export class SecretCrypto {

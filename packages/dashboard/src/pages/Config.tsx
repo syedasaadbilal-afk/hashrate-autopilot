@@ -5773,9 +5773,127 @@ function SecuritySection() {
           <ChangePasswordForm />
           <RotateTokenForm kind="owner" />
           <RotateTokenForm kind="read_only" />
+          <NicehashKeysForm />
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * #dual-provider: enter / replace the three NiceHash API credentials. Same
+ * db-sourced + current-password guard as the Braiins rotation. Keys are
+ * stored encrypted and take effect on the next daemon restart; verify with a
+ * DRY-RUN order snapshot before flipping run-mode to LIVE.
+ */
+function NicehashKeysForm() {
+  const [current, setCurrent] = useState('');
+  const [orgId, setOrgId] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.setNicehashKeys({
+        current_password: current,
+        org_id: orgId.trim(),
+        api_key: apiKey.trim(),
+        api_secret: apiSecret.trim(),
+      }),
+  });
+  const result = mutation.data;
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.reset();
+    mutation.mutate(undefined, {
+      onSuccess: (res) => {
+        if (res.ok) {
+          setCurrent('');
+          setOrgId('');
+          setApiKey('');
+          setApiSecret('');
+        }
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-2">
+      <div className="text-sm font-medium text-slate-300">
+        <Trans>Set NiceHash API keys</Trans>
+      </div>
+      <p className="text-xs text-slate-500">
+        <Trans>
+          Enter your NiceHash organization id, API key and API secret. They're stored encrypted
+          and never leave your server. Enabling NiceHash itself (and its market, pool and budget)
+          lives on the Config page. Keys take effect after the daemon restarts.
+        </Trans>
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input
+          type="password"
+          autoComplete="current-password"
+          placeholder={t`Current password`}
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+        <input
+          type="text"
+          autoComplete="off"
+          placeholder={t`Organization id`}
+          value={orgId}
+          onChange={(e) => setOrgId(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder={t`API key`}
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder={t`API secret`}
+          value={apiSecret}
+          onChange={(e) => setApiSecret(e.target.value)}
+          className={PW_INPUT_CLASS}
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={
+            mutation.isPending ||
+            !current ||
+            !orgId.trim() ||
+            !apiKey.trim() ||
+            !apiSecret.trim()
+          }
+          className="px-3 py-1.5 text-sm rounded border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
+        >
+          {mutation.isPending ? <Trans>Saving…</Trans> : <Trans>Save NiceHash keys</Trans>}
+        </button>
+        {result && result.ok && (
+          <span className="text-xs text-emerald-300">
+            <Trans>Keys saved. They apply after the next daemon restart.</Trans>
+          </span>
+        )}
+        {result && !result.ok && (
+          <span className="text-xs text-red-400">
+            {result.status === 403 ? (
+              <Trans>Current password is incorrect.</Trans>
+            ) : (
+              (result.error ?? t`Could not save the NiceHash keys.`)
+            )}
+          </span>
+        )}
+      </div>
+    </form>
   );
 }
 

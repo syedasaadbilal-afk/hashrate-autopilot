@@ -64,6 +64,13 @@ export class SecretsRepo {
     if (rpcPass) candidate['bitcoind_rpc_password'] = rpcPass;
     const tgToken = dec('telegram_bot_token', row.telegram_bot_token);
     if (tgToken) candidate['telegram_bot_token'] = tgToken;
+    // #dual-provider: NiceHash credentials. org id is not sensitive (stored
+    // plaintext); key + secret are encrypted like the other secret columns.
+    if (row.nicehash_org_id) candidate['nicehash_org_id'] = row.nicehash_org_id;
+    const nhKey = dec('nicehash_api_key', row.nicehash_api_key);
+    if (nhKey) candidate['nicehash_api_key'] = nhKey;
+    const nhSecret = dec('nicehash_api_secret', row.nicehash_api_secret);
+    if (nhSecret) candidate['nicehash_api_secret'] = nhSecret;
     return SecretsSchema.parse(candidate);
   }
 
@@ -91,6 +98,9 @@ export class SecretsRepo {
       bitcoind_rpc_user: validated.bitcoind_rpc_user ?? null,
       bitcoind_rpc_password: enc('bitcoind_rpc_password', validated.bitcoind_rpc_password),
       telegram_bot_token: enc('telegram_bot_token', validated.telegram_bot_token),
+      nicehash_org_id: validated.nicehash_org_id ?? null,
+      nicehash_api_key: enc('nicehash_api_key', validated.nicehash_api_key),
+      nicehash_api_secret: enc('nicehash_api_secret', validated.nicehash_api_secret),
     };
     await this.db
       .insertInto('secrets')
@@ -165,6 +175,37 @@ export class SecretsRepo {
     await this.db
       .updateTable('secrets')
       .set({ [field]: stored, updated_at: now })
+      .where('id', '=', 1)
+      .execute();
+    return true;
+  }
+
+  /**
+   * #dual-provider: set (or replace) the three NiceHash API credentials in
+   * place, encrypting key + secret exactly as this repo does on upsert.
+   * Requires an existing secrets row (DB-sourced install); returns false if
+   * there's none. Takes effect on the next daemon restart, like the Braiins
+   * token rotation, since the NiceHash client is constructed at boot.
+   */
+  async setNicehashCredentials(
+    orgId: string,
+    apiKey: string,
+    apiSecret: string,
+    now: number = Date.now(),
+  ): Promise<boolean> {
+    if (!(await this.exists())) return false;
+    const encKey = this.crypto ? this.crypto.encrypt('nicehash_api_key', apiKey) : apiKey;
+    const encSecret = this.crypto
+      ? this.crypto.encrypt('nicehash_api_secret', apiSecret)
+      : apiSecret;
+    await this.db
+      .updateTable('secrets')
+      .set({
+        nicehash_org_id: orgId,
+        nicehash_api_key: encKey,
+        nicehash_api_secret: encSecret,
+        updated_at: now,
+      })
       .where('id', '=', 1)
       .execute();
     return true;

@@ -873,6 +873,12 @@ export const api = {
     current_password: string;
     token: string;
   }) => securityPost('/api/security/braiins-token', body),
+  setNicehashKeys: (body: {
+    current_password: string;
+    org_id: string;
+    api_key: string;
+    api_secret: string;
+  }) => securityPost('/api/security/nicehash-keys', body),
   setRunMode: (run_mode: 'DRY_RUN' | 'LIVE' | 'PAUSED') =>
     request<{ run_mode: string }>('/api/run-mode', {
       method: 'POST',

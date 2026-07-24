@@ -334,6 +334,9 @@ const SECRETS_ENV: {
   bitcoind_rpc_url: { varName: 'BHA_BITCOIND_RPC_URL', coerce: asString },
   bitcoind_rpc_user: { varName: 'BHA_BITCOIND_RPC_USER', coerce: asString },
   bitcoind_rpc_password: { varName: 'BHA_BITCOIND_RPC_PASSWORD', coerce: asString },
+  nicehash_org_id: { varName: 'BHA_NICEHASH_ORG_ID', coerce: asString },
+  nicehash_api_key: { varName: 'BHA_NICEHASH_API_KEY', coerce: asString },
+  nicehash_api_secret: { varName: 'BHA_NICEHASH_API_SECRET', coerce: asString },
   dashboard_password: { varName: 'BHA_DASHBOARD_PASSWORD', coerce: asString },
 };
 
