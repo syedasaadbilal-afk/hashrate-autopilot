@@ -353,10 +353,10 @@ export class Controller {
   private async evaluateProvidersTick(state: State): Promise<void> {
     const cfg = this.deps.providerEvalConfig!;
     const svc = this.deps.nicehashService!;
-    const [algo, orders] = await Promise.all([
-      svc.getAlgorithm(cfg.algorithm),
-      svc.getOrderBook(cfg.algorithm),
-    ]);
+    // One public request returns the whole book for the market, already
+    // carrying its own authoritative marketFactor - no separate algorithm
+    // lookup, and the market is selected here so no further filtering needed.
+    const book = await svc.getMarketBook(cfg.algorithm, cfg.market || undefined);
 
     const prev: ProviderSelectState = {
       activeProvider: this.activeProvider,
@@ -364,9 +364,8 @@ export class Controller {
     };
     const evald: EvaluateProvidersResult = evaluateProviders({
       braiinsFillableSatPerEhDay: state.fillable_ask_sat_per_eh_day,
-      nicehashOrders: orders,
-      nicehashMarketFactor: algo?.marketFactor ?? null,
-      ...(cfg.market ? { nicehashMarket: cfg.market } : {}),
+      nicehashOrders: book?.orders ?? null,
+      nicehashMarketFactor: book?.marketFactor ?? null,
       nicehashMinDeliveredPh: cfg.minDeliveredPh,
       overpaySatPerPhDay: state.config.overpay_sat_per_eh_day / 1000,
       braiinsFeePct: cfg.braiinsFeePct,

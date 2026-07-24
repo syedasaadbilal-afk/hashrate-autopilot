@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { NiceHashOrderBookOrder } from './client.js';
+import type { NiceHashOrderBookOrder, NiceHashOrderBookResponse } from './client.js';
 import {
   cheapestFillableForDepth,
   desiredBidAboveFillable,
+  extractMarketBook,
   lowestFillingPrice,
 } from './orderbook.js';
 
@@ -62,6 +63,51 @@ describe('cheapestFillableForDepth', () => {
     const r = cheapestFillableForDepth(orders, 1, MF);
     expect(r.priceSatPerPhDay).toBeNull();
     expect(r.thin).toBe(true);
+  });
+});
+
+describe('extractMarketBook (live API shape: stats.<market>.orders)', () => {
+  // Mirrors the real response: orders nested under stats.BTC, marketFactor 1e18 (EH).
+  const response: NiceHashOrderBookResponse = {
+    stats: {
+      BTC: {
+        marketFactor: '1000000000000000000',
+        displayMarketFactor: 'EH',
+        priceFactor: '1000000000000000000',
+        orders: [
+          { id: 'a', type: 'BUSINESS', price: '0.52270000', acceptedSpeed: '0.00100000', alive: true, currencyMarket: 'BTC' },
+          { id: 'b', type: 'STANDARD', price: '0.50280000', acceptedSpeed: '0.00200000', alive: true, currencyMarket: 'BTC' },
+          { id: 'c', type: 'STANDARD', price: '0.49600000', acceptedSpeed: '0.00050000', alive: true, currencyMarket: 'BTC' }, // lowest filling
+          { id: 'd', type: 'STANDARD', price: '0.49000000', acceptedSpeed: '0.00000000', alive: true, currencyMarket: 'BTC' }, // below fill line
+          { id: 'e', type: 'STANDARD', price: '0.48000000', acceptedSpeed: '0', alive: true, currencyMarket: 'BTC' },
+        ],
+      },
+    },
+  };
+
+  it('pulls the BTC market orders and its marketFactor (1e18)', () => {
+    const book = extractMarketBook(response, 'BTC');
+    expect(book).not.toBeNull();
+    expect(book!.market).toBe('BTC');
+    expect(book!.marketFactor).toBe(1e18);
+    expect(book!.orders.length).toBe(5);
+  });
+
+  it('falls back to the first market when the configured one is absent (e.g. stale "EU")', () => {
+    const book = extractMarketBook(response, 'EU');
+    expect(book!.market).toBe('BTC'); // EU not present -> falls back
+  });
+
+  it('feeds lowestFillingPrice correctly: 0.4960 BTC/EH/day -> 49,600 sat/PH/day', () => {
+    const book = extractMarketBook(response)!;
+    const fill = lowestFillingPrice(book.orders, book.marketFactor);
+    expect(fill.priceSatPerPhDay).toBeCloseTo(49_600, 0); // the cheapest order still receiving speed
+  });
+
+  it('returns null for an empty/missing stats object', () => {
+    expect(extractMarketBook({ stats: {} })).toBeNull();
+    expect(extractMarketBook(null)).toBeNull();
+    expect(extractMarketBook({})).toBeNull();
   });
 });
 

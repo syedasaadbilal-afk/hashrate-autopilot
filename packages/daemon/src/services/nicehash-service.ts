@@ -15,10 +15,11 @@
  * live on the client and are wired in the LIVE step, not here.
  */
 
-import type {
-  NiceHashAlgorithm,
-  NiceHashClient,
-  NiceHashOrderBookOrder,
+import {
+  extractMarketBook,
+  type MarketBook,
+  type NiceHashAlgorithm,
+  type NiceHashClient,
 } from '@hashrate-autopilot/nicehash-client';
 
 interface CachedValue<T> {
@@ -62,14 +63,26 @@ export class NiceHashService {
     }
   }
 
-  /** Best-effort order-book fetch for one algorithm. null on any failure. */
-  async getOrderBook(algorithm: string): Promise<readonly NiceHashOrderBookOrder[] | null> {
+  /**
+   * Best-effort order book for one algorithm + market, parsed into the flat
+   * orders list plus the market's own marketFactor. Fetches the whole book in
+   * one request (large page size) so the fill line is computed from the full
+   * depth. null on any failure or when the market has no usable data.
+   */
+  async getMarketBook(algorithm: string, market?: string): Promise<MarketBook | null> {
     try {
-      const book = await this.client.getOrderBook(algorithm);
+      const resp = await this.client.getOrderBook(algorithm);
       this.lastApiOkAt = this.now();
-      return book.orders ?? [];
+      const book = extractMarketBook(resp, market);
+      if (!book) {
+        console.warn(
+          `[nicehash] orderBook(${algorithm}) returned no usable market (wanted ${market ?? 'first'})`,
+        );
+        return null;
+      }
+      return book;
     } catch (err) {
-      console.warn(`[nicehash] getOrderBook(${algorithm}) failed: ${(err as Error).message}`);
+      console.warn(`[nicehash] getMarketBook(${algorithm}) failed: ${(err as Error).message}`);
       return null;
     }
   }

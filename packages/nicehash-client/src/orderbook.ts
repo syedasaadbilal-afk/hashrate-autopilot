@@ -35,8 +35,42 @@
  *     guard for large orders.
  */
 
-import type { NiceHashOrderBookOrder } from './client.js';
+import type { NiceHashOrderBookOrder, NiceHashOrderBookResponse } from './client.js';
 import { priceToSatPerEhDay, priceToSatPerPhDay, satPerPhDayToPrice } from './units.js';
+
+export interface MarketBook {
+  /** Orders for the selected market. */
+  readonly orders: readonly NiceHashOrderBookOrder[];
+  /** Authoritative marketFactor (H/s per unit) for this market's prices/speeds. */
+  readonly marketFactor: number;
+  /** Which market key was actually used (e.g. "BTC"). */
+  readonly market: string;
+}
+
+/**
+ * Pull the orders + marketFactor for one market out of the live order-book
+ * response. NiceHash nests everything under `stats.<currencyMarket>` (the key
+ * is the currency, e.g. "BTC"), and each market carries its own `marketFactor`
+ * (e.g. 1e18 = EH) which is the authoritative unit for that market's prices
+ * and speeds. If the requested `market` isn't present, falls back to the first
+ * available market so a stale/region-style config value (e.g. "EU") still
+ * works. Returns null when the response has no usable market.
+ */
+export function extractMarketBook(
+  response: NiceHashOrderBookResponse | null | undefined,
+  market?: string,
+): MarketBook | null {
+  const stats = response?.stats;
+  if (!stats || typeof stats !== 'object') return null;
+  const keys = Object.keys(stats);
+  if (keys.length === 0) return null;
+  const key = market && stats[market] ? market : keys[0]!;
+  const ms = stats[key];
+  if (!ms) return null;
+  const marketFactor = Number(ms.marketFactor);
+  if (!Number.isFinite(marketFactor) || marketFactor <= 0) return null;
+  return { orders: ms.orders ?? [], marketFactor, market: key };
+}
 
 const H_PER_PH = 1e15;
 

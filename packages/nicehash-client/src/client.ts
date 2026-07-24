@@ -44,19 +44,39 @@ export interface NiceHashAlgorithmsResponse {
   readonly [key: string]: unknown;
 }
 
+// Shape confirmed against the LIVE endpoint 2026-07-23. Orders are NOT a
+// top-level array - they're nested under `stats.<currencyMarket>.orders`,
+// where the market key is the currency (e.g. "BTC"), and each market's stats
+// carry the authoritative `marketFactor` for the prices/speeds in it.
 export interface NiceHashOrderBookOrder {
   readonly id: string;
+  readonly type?: string; // "STANDARD" | "FIXED" | "BUSINESS"
   readonly price: string; // BTC per marketFactor-unit of speed, per day
-  readonly limitSpeed?: string;
-  readonly acceptedSpeed?: string;
-  readonly type?: { readonly code: string };
-  readonly market?: string;
-  readonly algorithm?: { readonly algorithm: string };
+  readonly limit?: string; // order's speed limit, in marketFactor units
+  readonly rigsCount?: number;
+  readonly acceptedSpeed?: string; // hashrate currently delivered to this order (marketFactor units)
+  readonly payingSpeed?: string;
+  readonly alive?: boolean;
+  readonly currencyMarket?: string; // e.g. "BTC"
+  readonly [key: string]: unknown;
+}
+
+export interface NiceHashMarketStats {
+  readonly orders?: readonly NiceHashOrderBookOrder[];
+  readonly marketFactor?: string; // H/s per "1" unit of price/speed (e.g. "1000000000000000000" = EH)
+  readonly displayMarketFactor?: string;
+  readonly priceFactor?: string;
+  readonly totalSpeed?: string;
+  readonly pagination?: {
+    readonly size: number;
+    readonly page: number;
+    readonly totalPageCount: number;
+  };
   readonly [key: string]: unknown;
 }
 
 export interface NiceHashOrderBookResponse {
-  readonly orders: readonly NiceHashOrderBookOrder[];
+  readonly stats?: Record<string, NiceHashMarketStats>;
   readonly [key: string]: unknown;
 }
 
@@ -147,11 +167,12 @@ export interface NiceHashClient {
   /** Public, no auth: algorithm metadata (marketFactor, speedText, etc). */
   getAlgorithms(): Promise<NiceHashAlgorithmsResponse>;
   /**
-   * Signed GET despite being market data - NiceHash's own reference client
-   * puts this under its authenticated `private_api`, so it requires the
-   * X-Auth header even though the data itself (the order book) is public.
+   * PUBLIC market data (verified 2026-07-23: the endpoint returns the full
+   * order book with no auth). `size` controls how many orders come back in
+   * one page - use a large value to get the whole book in a single request so
+   * the fill line can be computed without paginating.
    */
-  getOrderBook(algorithm: string): Promise<NiceHashOrderBookResponse>;
+  getOrderBook(algorithm: string, size?: number): Promise<NiceHashOrderBookResponse>;
   getMyOrders(
     algorithm: string,
     market: string,
@@ -298,13 +319,13 @@ export function createNiceHashClient(config: NiceHashClientConfig = {}): NiceHas
         'PUBLIC',
       ),
 
-    getOrderBook: (algorithm: string) =>
+    getOrderBook: (algorithm: string, size = 5000) =>
       read<NiceHashOrderBookResponse>(
         'GET /main/api/v2/hashpower/orderBook/',
         'GET',
         '/main/api/v2/hashpower/orderBook/',
-        `algorithm=${encodeURIComponent(algorithm)}`,
-        'SIGNED',
+        `algorithm=${encodeURIComponent(algorithm)}&size=${size}&page=0`,
+        'PUBLIC',
       ),
 
     getMyOrders: (algorithm: string, market: string, opts: GetMyOrdersOpts = {}) => {
