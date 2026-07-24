@@ -42,6 +42,7 @@ import {
   type StatsResponse,
   type TickNowResponse,
   type StatusResponse,
+  type ProviderEvaluation,
 } from '../lib/api';
 import {
   formatAge,
@@ -146,6 +147,95 @@ function readStoredPriceRightAxis(fallback: PriceRightAxis): PriceRightAxis {
   // fallback so existing operators with that persisted choice get
   // 'none' on next load instead of a dead dropdown state.
   return fallback;
+}
+
+/**
+ * #dual-provider: NiceHash-vs-Braiins panel. Reads the daemon's latest
+ * evaluation from /api/provider and shows which marketplace wins this tick,
+ * both effective (submitted) prices, NiceHash's fee-adjusted advantage, and
+ * the switch reason. Renders nothing when dual-provider is off or no tick has
+ * evaluated yet (endpoint returns null), so Braiins-only installs are
+ * unaffected. Pinned above the sortable dashboard so it can't be hidden by a
+ * saved card order.
+ */
+function ProviderPanel() {
+  const q = useQuery({
+    queryKey: ['provider'],
+    queryFn: api.provider,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const p: ProviderEvaluation | null | undefined = q.data;
+  if (!p) return null;
+
+  const fmtPrice = (v: number | null): string =>
+    v == null ? '—' : `${Math.round(v).toLocaleString()} sat/PH/day`;
+
+  const nhActive = p.activeProvider === 'NICEHASH';
+  const adv = p.nicehashAdvantagePct;
+  // Positive advantage = NiceHash cheaper. Colour the number by who benefits.
+  const advColour =
+    adv == null ? 'text-slate-300' : adv > 0 ? 'text-emerald-300' : 'text-slate-300';
+  const advText =
+    adv == null ? '—' : `${adv > 0 ? '+' : ''}${adv.toFixed(2)}% ${adv > 0 ? 'cheaper' : 'vs Braiins'}`;
+
+  const providerBadge = (label: string, active: boolean, activeClass: string) => (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+        active ? activeClass : 'bg-slate-800 text-slate-500'
+      }`}
+    >
+      {label}
+    </span>
+  );
+
+  return (
+    <section className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <header className="mb-3 flex items-center justify-between">
+        <h3 className="text-xs uppercase tracking-wider text-amber-400">
+          <Trans>Provider · NiceHash vs Braiins</Trans>
+        </h3>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500">
+            <Trans>Renting from</Trans>
+          </span>
+          {providerBadge('BRAIINS', !nhActive, 'bg-sky-500/20 text-sky-300')}
+          {providerBadge('NICEHASH', nhActive, 'bg-amber-400/20 text-amber-300')}
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bg-slate-950 border border-slate-800 rounded p-3">
+          <div className="text-[11px] text-slate-500 mb-1">
+            <Trans>Braiins price</Trans>
+          </div>
+          <div className="text-sm text-slate-200 tabular-nums">
+            {fmtPrice(p.braiinsEffectiveSatPerPhDay)}
+          </div>
+        </div>
+        <div className="bg-slate-950 border border-slate-800 rounded p-3">
+          <div className="text-[11px] text-slate-500 mb-1">
+            <Trans>NiceHash price</Trans>
+          </div>
+          <div className="text-sm text-slate-200 tabular-nums">
+            {fmtPrice(p.nicehashEffectiveSatPerPhDay)}
+          </div>
+        </div>
+        <div className="bg-slate-950 border border-slate-800 rounded p-3">
+          <div className="text-[11px] text-slate-500 mb-1">
+            <Trans>NiceHash advantage (fees in)</Trans>
+          </div>
+          <div className={`text-sm font-semibold tabular-nums ${advColour}`}>{advText}</div>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+        <Trans>Decision</Trans>: {p.reason}
+        {p.switched ? ' · ' : ''}
+        {p.switched ? <Trans>switched this tick</Trans> : null}
+      </p>
+    </section>
+  );
 }
 
 export function Status() {
@@ -1428,6 +1518,12 @@ export function Status() {
       {/* #113: stale-URL banner. Renders only when there's a real
           mismatch between config and an active bid - silent otherwise. */}
       <StaleUrlBanner />
+      {/* #dual-provider: NiceHash vs Braiins comparison. Pinned (outside the
+          sortable region) so it always shows when dual-provider is enabled,
+          regardless of the operator's saved card order. Self-hides when the
+          daemon reports no evaluation (NiceHash off / no tick yet). */}
+      <ProviderPanel />
+
       {/* #244 v3: edit-mode hint + redundant Done button. The header
           toggle and this banner's Done are deliberately redundant -
           on mobile the operator shouldn't have to re-open the

@@ -846,12 +846,29 @@ async function publicPost<T>(path: string, body: unknown): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+// #dual-provider: mirrors the daemon's ProviderEvaluationSnapshot
+// (packages/daemon/src/controller/tick.ts). All prices in sat/PH/day.
+export interface ProviderEvaluation {
+  at: number;
+  activeProvider: 'BRAIINS' | 'NICEHASH';
+  braiinsEffectiveSatPerPhDay: number | null;
+  nicehashEffectiveSatPerPhDay: number | null;
+  braiinsCostSatPerPhDay: number | null;
+  nicehashCostSatPerPhDay: number | null;
+  nicehashAdvantagePct: number | null;
+  switched: boolean;
+  reason: string;
+}
+
 export const api = {
   health: () => publicGet<HealthResponse>('/api/health'),
   setupInfo: () => publicGet<SetupInfoResponse>('/api/setup-info'),
   submitSetup: (payload: SetupRequestPayload) =>
     publicPost<SetupResponse>('/api/setup', payload),
   status: () => request<StatusResponse>('/api/status'),
+  // #dual-provider: latest NiceHash-vs-Braiins evaluation. null when
+  // dual-provider is disabled or no tick has evaluated yet.
+  provider: () => request<ProviderEvaluation | null>('/api/provider'),
   decisions: (limit = 500) =>
     request<DecisionSummary[]>(`/api/decisions?limit=${limit}`),
   decision: (id: number) => request<DecisionDetail>(`/api/decisions/${id}`),

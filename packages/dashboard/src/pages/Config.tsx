@@ -940,7 +940,7 @@ const TAB_SECTIONS: Record<TabId, readonly string[]> = {
   // #222: fee-protection sits between pricing and budget - the two
   // knobs (max acceptable fee, edit deadband) modify the pricing
   // controller's behavior under marketplace fees.
-  strategy: ['hashrate-targets', 'cheap-mode', 'pricing', 'fee-protection', 'budget', 'daemon-startup'],
+  strategy: ['hashrate-targets', 'cheap-mode', 'pricing', 'fee-protection', 'budget', 'dual-provider', 'daemon-startup'],
   pool: ['pool-destination', 'ddns', 'payout-source', 'profit-and-loss', 'btc-price-oracle', 'security'],
   notifications: ['notifications', 'block-found-sound'],
   display: ['display-settings', 'chart-colors', 'solo-miners', 'block-explorer', 'chart-smoothing', 'chart-markers', 'log-retention', 'debug-api', 'diagnostics'],
