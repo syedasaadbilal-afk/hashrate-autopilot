@@ -29,6 +29,7 @@
  * care about.
  */
 
+import { computeParkPrice, isParked } from './park.js';
 import type { Proposal, State } from './types.js';
 
 /**
@@ -86,20 +87,43 @@ export function decide(state: State): readonly Proposal[] {
   }
 
   // #dual-provider: when Braiins is NOT the active provider (NiceHash won the
-  // switch), stop Braiins spend by cancelling owned bids - the same proven
-  // mechanism as the Datum-down stop-spend above. Braiins new orders are free,
-  // so cancel-and-recreate on switch-back costs nothing; the NiceHash side is
-  // the one that PARKS (drops below fill) to dodge its ~1,000-sat new-order
-  // fee. Guarded on `active_provider` (absent = 'BRAIINS'), so single-provider
-  // behaviour is byte-for-byte unchanged.
+  // switch), do NOT cancel - PARK the owned bid(s) below the fill line, exactly
+  // like the NiceHash side. A parked bid (price dropped below fillable) stops
+  // matching, so it delivers zero and costs zero while staying alive for a
+  // free, instant raise on switch-back (increases are unrestricted on Braiins).
+  // This is the uniform handover documented in park.ts, and it also dodges
+  // Braiins' 10-min CANCEL grace period - a just-created bid can't be cancelled
+  // during grace, which would otherwise leave it spending; a price *decrease*
+  // is not grace-blocked, so parking stops the spend immediately. CANCEL stays
+  // reserved for hard stops (Datum-down above, teardown). Guarded on
+  // `active_provider` (absent = 'BRAIINS'), so single-provider behaviour is
+  // byte-for-byte unchanged.
   const activeProvider = state.active_provider ?? 'BRAIINS';
   if (activeProvider !== 'BRAIINS') {
-    const cancellable = state.owned_bids.filter((b) => !isPendingCancel(b));
-    if (cancellable.length === 0) return [];
-    return cancellable.map((bid) => ({
-      kind: 'CANCEL_BID' as const,
+    const parkable = state.owned_bids.filter((b) => !isPendingCancel(b));
+    if (parkable.length === 0) return [];
+    // Need the fill line to price the park. Without a market snapshot, hold -
+    // never fall back to cancel (that reintroduces the grace-period trap).
+    if (!state.market || state.fillable_ask_sat_per_eh_day === null) return [];
+    // computeParkPrice is unit-agnostic; feed everything in sat/EH/day (Braiins
+    // bid prices and fillable_ask are already sat/EH/day). park_margin is
+    // configured per PH/day, so scale it to per EH/day (×1000).
+    const parkTarget = Math.round(
+      computeParkPrice({
+        fillLineSatPerPhDay: state.fillable_ask_sat_per_eh_day,
+        marginSatPerPhDay: state.config.park_margin_sat_per_ph_day * 1000,
+      }),
+    );
+    // Skip bids already at/below the park price (idle). gate.ts still enforces
+    // Braiins' price-decrease cooldown on the ones we do move.
+    const toPark = parkable.filter((b) => !isParked(b.price_sat, parkTarget));
+    if (toPark.length === 0) return [];
+    return toPark.map((bid) => ({
+      kind: 'EDIT_PRICE' as const,
       braiins_order_id: bid.braiins_order_id,
-      reason: `${activeProvider} is the active provider - cancel Braiins bid to stop spend (free to recreate on switch-back)`,
+      new_price_sat: parkTarget,
+      old_price_sat: bid.price_sat,
+      reason: `${activeProvider} is the active provider - park Braiins bid below the fill line (uniform park, no cancel; avoids the 10-min cancel grace period)`,
     }));
   }
 

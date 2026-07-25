@@ -139,6 +139,16 @@ export class Controller {
   private nicehashLastPriceSatPerPhDay: number | null = null;
 
   /**
+   * #dual-provider: false until the first provider evaluation after boot has
+   * committed to a provider. On that first eval we pick whichever is
+   * price-favorable RIGHT NOW and bypass the sustained window - a restart has no
+   * incumbent to protect, so we should start on exactly ONE provider (the
+   * favorable one) rather than defaulting in and slowly switching, which risks
+   * briefly running both. After it's set, normal windowed switching resumes.
+   */
+  private providerBootSeeded = false;
+
+  /**
    * #287 follow-up: the order id of a BID_PAUSED we have emitted and
    * not yet matched with a BID_RESUMED. A resume only emits when this
    * matches the current order - so a pause that began during downtime
@@ -435,18 +445,38 @@ export class Controller {
       now: state.tick_at,
     });
 
-    this.activeProvider = evald.selection.activeProvider;
-    this.challengerReadySince = evald.selection.challengerReadySince;
+    // #dual-provider: boot seed. On the FIRST evaluation after a restart, commit
+    // straight to the price-favorable provider and bypass the sustained window -
+    // a restart has no incumbent to protect, and this guarantees we start on
+    // exactly ONE provider (never a Braiins bid while NiceHash is cheaper, or
+    // vice-versa). Only seeds once a price-based preference exists this tick.
+    let seededProvider = evald.selection.activeProvider;
+    let seededChallengerReadySince = evald.selection.challengerReadySince;
+    let bootSeedReason: string | null = null;
+    if (!this.providerBootSeeded && evald.selection.preferredByPrice !== null) {
+      seededProvider = evald.selection.preferredByPrice;
+      seededChallengerReadySince = null;
+      this.providerBootSeeded = true;
+      if (seededProvider !== evald.selection.activeProvider) {
+        bootSeedReason =
+          `boot: start on ${seededProvider} (price-favorable now; sustained window ` +
+          `bypassed on the first tick after restart)`;
+        console.info(`[provider] ${bootSeedReason}`);
+      }
+    }
+
+    this.activeProvider = seededProvider;
+    this.challengerReadySince = seededChallengerReadySince;
     this.lastProviderEvaluation = {
       at: state.tick_at,
-      activeProvider: evald.selection.activeProvider,
+      activeProvider: seededProvider,
       braiinsEffectiveSatPerPhDay: evald.braiinsEffectiveSatPerPhDay,
       nicehashEffectiveSatPerPhDay: evald.nicehashEffectiveSatPerPhDay,
       braiinsCostSatPerPhDay: evald.braiinsCostSatPerPhDay,
       nicehashCostSatPerPhDay: evald.nicehashCostSatPerPhDay,
       nicehashAdvantagePct: evald.selection.nicehashAdvantagePct,
       switched: evald.selection.switched,
-      reason: evald.selection.reason,
+      reason: bootSeedReason ?? evald.selection.reason,
       nicehashAction: null,
       nicehashOrder: null,
       nicehashDecreaseCooldownSecondsLeft: nicehashCooldownSecondsLeft(
@@ -515,8 +545,15 @@ export class Controller {
               })
             : null;
         const actions = decideNicehash({
-          providerActive: evald.selection.activeProvider === 'NICEHASH',
+          // Use the seeded/committed provider (boot seed may have overridden the
+          // windowed selection on the first tick) so order maintenance matches.
+          providerActive: this.activeProvider === 'NICEHASH',
           desiredPriceSatPerPhDay: evald.nicehashEffectiveSatPerPhDay,
+          // Overpay cushion baked into `desired`, so decideNicehash can throttle
+          // increases: hold while still above the fill line, raise only when the
+          // order has fallen to it (avoids per-tick increases that would keep
+          // NiceHash's 10-min decrease lockout permanently reset).
+          overpaySatPerPhDay: cfg.overpay_sat_per_eh_day / 1000,
           parkPriceSatPerPhDay: parkPrice,
           order: {
             exists: snapshot.exists,

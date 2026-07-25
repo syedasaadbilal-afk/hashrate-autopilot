@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-07-25 (later)
+
+### `[Release]` v1.18.10
+
+NiceHash order-tracking fixes found while running live. The daemon could not raise a NiceHash order's price - every increase was silently rejected - so when the fill line rose the order fell below it and stopped delivering (0.00 PH/s) until it was raised by hand. Root cause: submitted prices weren't quantized to NiceHash's 4-decimal tick. Also folds in the uniform Braiins park (no cancel on switch-away), a smarter edit cadence that stops churning NiceHash's 10-minute lockout, a restart that starts on only the favorable provider, and the BIDS panel showing both providers at once.
+
+### `[Fix]` NiceHash price edits no longer rejected for too many decimals (error 2997)
+
+Every price the daemon submitted came straight from its sat/PH/day maths, which routinely produced five decimal places in NiceHash's BTC/EH/day unit (e.g. 48,199 sat/PH/day -> 0.48199). NiceHash accepts at most four decimals and rejected the rest with error 2997 - so increases (and any decrease that didn't happen to land on a round value) silently failed, leaving the order stranded below the fill line and delivering nothing. Submitted prices are now rounded to NiceHash's 0.0001 tick (10 sat/PH/day) on both CREATE and EDIT, so every mutation is accepted.
+
+### `[Fix]` Increases no longer churn the 10-minute decrease lockout
+
+On NiceHash every price change - increases included - starts a 10-minute window during which the price can't be decreased. The daemon re-targeted fill-line + overpay every tick, firing a tiny increase whenever the fill line ticked up and thereby permanently resetting that window, so it could never lower the price when the market fell. It now holds an increase while the order is still above the fill line (delivering on the overpay cushion) and only raises once the price has fallen to the fill line, then jumps straight back to target for fresh headroom. Decreases likewise skip sub-cap nudges so a cooldown is never spent on a trivial move.
+
+### `[Fix]` Braiins is parked, not cancelled, on a provider switch (uniform handover)
+
+Switching to NiceHash cancelled the Braiins bid, but a freshly-created Braiins bid can't be cancelled during its 10-minute grace period, so it kept spending. The Braiins side now parks (drops the bid below the fill line) exactly like NiceHash - a decrease isn't grace-blocked, so spend stops immediately, and the bid stays alive for a free instant raise on switch-back. Cancel is reserved for hard stops (stratum down, teardown).
+
+### `[Fix]` A restart starts on only the favorable provider
+
+On boot the daemon now commits straight to whichever provider is cheaper right now, bypassing the sustained-switch window (a restart has no incumbent to protect). This prevents it briefly placing a Braiins bid while a NiceHash order is already live.
+
+### `[Improvement]` BIDS panel shows the Braiins bid and NiceHash order together
+
+During a handover both can be live at once; the panel previously showed the NiceHash order only when there were no Braiins bids. It now shows both.
+
 ## 2026-07-25
 
 ### `[Release]` v1.18.9

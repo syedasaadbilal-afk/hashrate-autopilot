@@ -19,6 +19,7 @@ import {
   extractMarketBook,
   phToSpeedUnits,
   priceToSatPerPhDay,
+  roundToNicehashPriceTick,
   satPerPhDayToPrice,
   type MarketBook,
   type NiceHashAlgorithm,
@@ -239,7 +240,10 @@ export class NiceHashService {
       market: p.market,
       algorithm: p.algorithm,
       amountBtc,
-      priceBtcPerUnitPerDay: satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
+      // NiceHash rejects >4-decimal prices (error 2997); quantize to its tick.
+      priceBtcPerUnitPerDay: roundToNicehashPriceTick(
+        satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
+      ),
       limitSpeedUnits: phToSpeedUnits(targetPh, p.marketFactor),
       poolId: p.poolId,
       marketFactor: p.marketFactor,
@@ -261,7 +265,10 @@ export class NiceHashService {
   ): Promise<void> {
     await this.client.editOrderPriceAndLimit({
       orderId,
-      priceBtcPerUnitPerDay: satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
+      // NiceHash rejects >4-decimal prices (error 2997); quantize to its tick.
+      priceBtcPerUnitPerDay: roundToNicehashPriceTick(
+        satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
+      ),
       limitSpeedUnits: phToSpeedUnits(limitPh, p.marketFactor),
       marketFactor: p.marketFactor,
       displayMarketFactor: p.displayMarketFactor,

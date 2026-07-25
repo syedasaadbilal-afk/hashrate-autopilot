@@ -168,14 +168,33 @@ describe('decide - Datum stratum down auto-cancel (#199)', () => {
     expect(proposals[0]!.reason).toContain('Datum stratum down');
   });
 
-  it('#dual-provider: cancels the Braiins bid when NiceHash is the active provider', () => {
+  it('#dual-provider: PARKS the Braiins bid (never cancels) when NiceHash is the active provider', () => {
+    // Uniform park design: on switch-away we drop the bid below the fill line
+    // (a decrease), we do NOT cancel - that would be blocked by Braiins' 10-min
+    // cancel grace period and leave the bid spending. fillable 45M - park_margin
+    // (5000 sat/PH/day = 5M sat/EH/day) = 40M park target.
     const proposals = decide(state({
       active_provider: 'NICEHASH',
       owned_bids: [owned()],
     }));
     expect(proposals).toHaveLength(1);
-    expect(proposals[0]).toMatchObject({ kind: 'CANCEL_BID', braiins_order_id: 'order-a' });
-    expect(proposals[0]!.reason).toContain('active provider');
+    expect(proposals[0]).toMatchObject({
+      kind: 'EDIT_PRICE',
+      braiins_order_id: 'order-a',
+      new_price_sat: 40_000_000,
+      old_price_sat: 46_000_000,
+    });
+    expect(proposals.every((p) => p.kind !== 'CANCEL_BID')).toBe(true);
+    expect(proposals[0]!.reason).toContain('park');
+  });
+
+  it('#dual-provider: does nothing when the Braiins bid is already parked below fill', () => {
+    // Already at/below the 40M park target -> idle, no churn.
+    const proposals = decide(state({
+      active_provider: 'NICEHASH',
+      owned_bids: [owned({ price_sat: 39_000_000 })],
+    }));
+    expect(proposals).toEqual([]);
   });
 
   it('#dual-provider: absent/BRAIINS active_provider leaves Braiins behaviour unchanged', () => {

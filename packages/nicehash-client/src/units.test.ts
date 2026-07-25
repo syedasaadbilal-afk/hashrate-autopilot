@@ -4,12 +4,39 @@ import {
   phToSpeedUnits,
   priceToSatPerEhDay,
   priceToSatPerPhDay,
+  roundToNicehashPriceTick,
   satPerPhDayToPrice,
   speedUnitsToPh,
 } from './units.js';
 
 // SHA256's marketFactor corresponds to TH/s (1e12 H/s per unit).
 const SHA256_MARKET_FACTOR = 1e12;
+// The live SHA256 EH market: marketFactor 1e18, price quoted in BTC/EH/day.
+const SHA256_EH_MARKET_FACTOR = 1e18;
+
+describe('roundToNicehashPriceTick', () => {
+  it('rounds a 5-decimal price to 4 decimals (NiceHash 2997 fix)', () => {
+    // 48,199 sat/PH/day -> 0.48199 BTC/EH/day (5 dp, rejected) -> 0.4820.
+    const price = satPerPhDayToPrice(48_199, SHA256_EH_MARKET_FACTOR);
+    expect(roundToNicehashPriceTick(price)).toBeCloseTo(0.482, 12);
+  });
+
+  it('leaves an already-4-decimal price unchanged', () => {
+    // 48,010 sat/PH/day -> exactly 0.4801 BTC/EH/day.
+    const price = satPerPhDayToPrice(48_010, SHA256_EH_MARKET_FACTOR);
+    expect(roundToNicehashPriceTick(price)).toBeCloseTo(0.4801, 12);
+  });
+
+  it('never emits more than 4 decimal places', () => {
+    for (const sat of [47_989, 48_111, 48_199, 50_001, 48_007]) {
+      const rounded = roundToNicehashPriceTick(
+        satPerPhDayToPrice(sat, SHA256_EH_MARKET_FACTOR),
+      );
+      // 4-decimal grid: value * 1e4 must be an integer.
+      expect(Math.abs(rounded * 1e4 - Math.round(rounded * 1e4))).toBeLessThan(1e-6);
+    }
+  });
+});
 
 describe('priceToSatPerPhDay', () => {
   it('converts 1e-8 BTC/TH/day to 1,000 sat/PH/day', () => {

@@ -39,6 +39,7 @@
 
 import {
   evaluateNicehashPriceEdit,
+  NICEHASH_DEFAULT_MAX_PRICE_DECREASE_STEP_SAT_PER_PH_DAY,
   type NicehashEditConstraints,
 } from '@hashrate-autopilot/nicehash-client';
 
@@ -88,6 +89,27 @@ export interface DecideNicehashInputs {
   readonly createAmountBtc: number;
   readonly now: number;
   readonly editConstraints?: NicehashEditConstraints;
+  /**
+   * Minimum downward gap (sat/PH/day) before a tracking DECREASE is worth
+   * doing. Because every decrease locks out further decreases for 10 minutes
+   * regardless of size, a sub-cap nudge (e.g. -21) wastes the whole cooldown.
+   * We only lower when the order is at least this far above the target, so each
+   * cooldown buys a (near-)full step; smaller gaps ride as minor overpay until
+   * they grow. Does NOT apply to PARK (that must reach below the fill line).
+   * Defaults to the per-edit cap (200 sat/PH/day).
+   */
+  readonly decreaseDeadbandSatPerPhDay?: number;
+  /**
+   * The overpay cushion baked into `desiredPriceSatPerPhDay` (sat/PH/day), used
+   * to throttle INCREASES. On NiceHash EVERY price change - increases included -
+   * starts the 10-minute decrease lockout, so tracking a rising fill line with a
+   * tiny +N every tick would permanently block our decreases. Instead we hold an
+   * increase while the order is still comfortably above the fill line (filling on
+   * the overpay cushion) and only RAISE once it has fallen to/below the fill line
+   * (desired - overpay), then jump straight back to desired for fresh headroom.
+   * When omitted/0 we fall back to always raising (legacy behaviour).
+   */
+  readonly overpaySatPerPhDay?: number;
 }
 
 export interface NicehashOrderAction {
@@ -181,20 +203,47 @@ export function decideNicehash(inputs: DecideNicehashInputs): readonly NicehashO
   // unrestricted increase, so it re-enters instantly and for free. Never a
   // cancel+recreate for a price move.
   if (inputs.desiredPriceSatPerPhDay !== null && order.currentPriceSatPerPhDay !== null) {
-    const edit = evaluateNicehashPriceEdit({
-      currentPriceSatPerPhDay: order.currentPriceSatPerPhDay,
-      desiredPriceSatPerPhDay: inputs.desiredPriceSatPerPhDay,
-      lastDecreaseAtMs: order.lastDecreaseAtMs,
-      now: inputs.now,
-      ...(inputs.editConstraints ? { constraints: inputs.editConstraints } : {}),
-    });
-    if (edit.allowed && edit.submitPriceSatPerPhDay !== null) {
-      actions.push({
-        kind: 'EDIT_PRICE',
-        ...(order.orderId ? { orderId: order.orderId } : {}),
-        submitPriceSatPerPhDay: edit.submitPriceSatPerPhDay,
-        reason: edit.reason,
+    const current = order.currentPriceSatPerPhDay;
+    const desired = inputs.desiredPriceSatPerPhDay;
+    const decreaseDeadband =
+      inputs.decreaseDeadbandSatPerPhDay ??
+      NICEHASH_DEFAULT_MAX_PRICE_DECREASE_STEP_SAT_PER_PH_DAY;
+    const overpay = inputs.overpaySatPerPhDay ?? 0;
+    const fillLine = desired - overpay; // desired = fill line + overpay
+
+    // Every price change (up OR down) starts NiceHash's 10-min decrease
+    // lockout, so we edit as seldom as possible:
+    //   * DECREASE only when overpaying by >= the deadband (one capped step),
+    //     so a cooldown is never spent on a sub-cap nudge.
+    //   * INCREASE only when the order has fallen to/below the fill line (about
+    //     to stop, or already not, delivering) - then jump straight back to
+    //     desired for fresh headroom. While still above the fill line we hold,
+    //     so a rising fill line doesn't fire a tiny per-tick increase that would
+    //     keep the decrease lockout permanently reset. (overpay <= 0 -> unknown
+    //     cushion, fall back to always raising.)
+    let shouldEdit = false;
+    if (current - desired >= decreaseDeadband) {
+      shouldEdit = true;
+    } else if (current < desired) {
+      shouldEdit = overpay <= 0 || current <= fillLine;
+    }
+
+    if (shouldEdit) {
+      const edit = evaluateNicehashPriceEdit({
+        currentPriceSatPerPhDay: current,
+        desiredPriceSatPerPhDay: desired,
+        lastDecreaseAtMs: order.lastDecreaseAtMs,
+        now: inputs.now,
+        ...(inputs.editConstraints ? { constraints: inputs.editConstraints } : {}),
       });
+      if (edit.allowed && edit.submitPriceSatPerPhDay !== null) {
+        actions.push({
+          kind: 'EDIT_PRICE',
+          ...(order.orderId ? { orderId: order.orderId } : {}),
+          submitPriceSatPerPhDay: edit.submitPriceSatPerPhDay,
+          reason: edit.reason,
+        });
+      }
     }
   }
 

@@ -108,6 +108,66 @@ describe('decideNicehash - price tracking obeys NiceHash step/cooldown', () => {
     expect(edit.submitPriceSatPerPhDay).toBe(47_800); // 48,000 - 200 (one step only)
   });
 
+  it('holds a sub-cap decrease (deadband): a -100 nudge is not worth the 10-min cooldown', () => {
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 47_900, // want -100, below the 200 deadband
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    expect(actions.some((a) => a.kind === 'EDIT_PRICE')).toBe(false);
+  });
+
+  it('lowers once the gap reaches the deadband (>= 200), capped to one step', () => {
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 47_800, // want -200 == deadband
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    const edit = actions.find((a) => a.kind === 'EDIT_PRICE')!;
+    expect(edit.submitPriceSatPerPhDay).toBe(47_800);
+  });
+
+  it('raises immediately when the overpay cushion is unknown (legacy fallback)', () => {
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 48_050, // +50 increase, no overpay passed
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    const edit = actions.find((a) => a.kind === 'EDIT_PRICE')!;
+    expect(edit.submitPriceSatPerPhDay).toBe(48_050);
+  });
+
+  it('HOLDS an increase while still above the fill line (overpay cushion intact)', () => {
+    // desired 48,100 with overpay 200 => fill line 47,900. Order at 48,000 is
+    // still above the fill line (filling on the cushion), so a rising target
+    // must NOT fire a tiny per-tick increase (that resets the 10-min lockout).
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 48_100,
+      overpaySatPerPhDay: 200,
+      order: liveOrder({ currentPriceSatPerPhDay: 48_000, remainingBtc: 0.01 }),
+    });
+    expect(actions.some((a) => a.kind === 'EDIT_PRICE')).toBe(false);
+  });
+
+  it('RAISES straight to desired once the order falls to the fill line', () => {
+    // Same target/overpay; now the order has drifted down to 47,850 <= fill line
+    // 47,900 (about to stop delivering), so we jump back to desired (48,100).
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 48_100,
+      overpaySatPerPhDay: 200,
+      order: liveOrder({ currentPriceSatPerPhDay: 47_850, remainingBtc: 0.01 }),
+    });
+    const edit = actions.find((a) => a.kind === 'EDIT_PRICE')!;
+    expect(edit.submitPriceSatPerPhDay).toBe(48_100);
+  });
+
   it('holds price during the decrease cooldown but still refills if low', () => {
     const actions = decideNicehash({
       ...BASE,

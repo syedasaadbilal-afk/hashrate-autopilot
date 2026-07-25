@@ -1480,10 +1480,12 @@ export function Status() {
     bids: (
       <section>
         <h3 className="text-xs uppercase tracking-wider text-slate-100 mb-2"><Trans>Bids</Trans></h3>
-        {s.bids.length === 0 ? (
-          nicehashOrder?.exists ? (
-            /* #dual-provider: no Braiins bids, but a live NiceHash order - show it. */
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+        {/* #dual-provider: show the live NiceHash order whenever it exists -
+            ALONGSIDE any Braiins bids, not only when Braiins has none. During a
+            provider handover both can be live at once (Braiins parking while
+            NiceHash fills), and the operator needs to see both. */}
+        {nicehashOrder?.exists && (
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-3">
               <div className="flex items-center justify-between mb-3">
                 <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-400/20 text-amber-300">
                   NICEHASH
@@ -1538,12 +1540,8 @@ export function Status() {
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 text-slate-500 text-sm">
-              <Trans>no bids on this account</Trans>
-            </div>
-          )
-        ) : (
+        )}
+        {s.bids.length > 0 ? (
           <>
             {/* Desktop: table */}
             <div className="hidden sm:block bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -1653,6 +1651,10 @@ export function Status() {
               ))}
             </div>
           </>
+        ) : nicehashOrder?.exists ? null : (
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 text-slate-500 text-sm">
+            <Trans>no bids on this account</Trans>
+          </div>
         )}
       </section>
     ),
