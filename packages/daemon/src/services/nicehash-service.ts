@@ -253,12 +253,16 @@ export class NiceHashService {
     p: NiceHashLiveParams,
     orderId: string,
     priceSatPerPhDay: number,
-    targetPh: number,
+    // The limit (speed cap) to send. NiceHash's updatePriceAndLimit rejects a
+    // limit DECREASE with a 400, so callers must pass the order's CURRENT limit
+    // (or higher) here - never the config target if that's lower. See
+    // execute-nicehash.ts.
+    limitPh: number,
   ): Promise<void> {
     await this.client.editOrderPriceAndLimit({
       orderId,
       priceBtcPerUnitPerDay: satPerPhDayToPrice(priceSatPerPhDay, p.marketFactor),
-      limitSpeedUnits: phToSpeedUnits(targetPh, p.marketFactor),
+      limitSpeedUnits: phToSpeedUnits(limitPh, p.marketFactor),
       marketFactor: p.marketFactor,
       displayMarketFactor: p.displayMarketFactor,
     });

@@ -29,6 +29,10 @@ export async function executeNicehash(
   runMode: RunMode,
   params: NiceHashLiveParams,
   targetPh: number,
+  // The live order's current speed limit (PH/s), or null if unknown/no order.
+  // Price edits must never send a limit below this - NiceHash 400s on a limit
+  // decrease. Only used for EDIT_PRICE / PARK on an existing order.
+  currentOrderLimitPh: number | null,
 ): Promise<ExecuteNicehashResult[]> {
   const results: ExecuteNicehashResult[] = [];
 
@@ -66,7 +70,13 @@ export async function executeNicehash(
         }
         case 'EDIT_PRICE':
         case 'PARK': {
-          await svc.editOrderPrice(params, a.orderId!, a.submitPriceSatPerPhDay!, targetPh);
+          // Edits cover PRICE only - the speed limit is set at CREATE from
+          // config (nicehash_target_hashrate_ph) and left untouched here. We
+          // must still resend a limit (updatePriceAndLimit requires it), so we
+          // echo the order's CURRENT limit unchanged - never the config target
+          // if that's lower, since NiceHash 400s a limit decrease.
+          const editLimitPh = currentOrderLimitPh ?? targetPh;
+          await svc.editOrderPrice(params, a.orderId!, a.submitPriceSatPerPhDay!, editLimitPh);
           console.info(`[nicehash] LIVE ${a.kind} ok id=${a.orderId}: ${a.reason}`);
           results.push({ kind: a.kind, outcome: 'EXECUTED', note: `${a.kind} ${a.orderId}` });
           break;
@@ -80,8 +90,12 @@ export async function executeNicehash(
       }
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err);
-      console.warn(`[nicehash] LIVE ${a.kind} FAILED: ${msg}`);
-      results.push({ kind: a.kind, outcome: 'FAILED', note: msg });
+      // NiceHashApiError carries the parsed response body - surface it so a 400
+      // says WHY (e.g. limit decrease, price step) instead of just the status.
+      const body = (err as { body?: unknown }).body;
+      const detail = body !== undefined ? ` body=${JSON.stringify(body)}` : '';
+      console.warn(`[nicehash] LIVE ${a.kind} FAILED: ${msg}${detail}`);
+      results.push({ kind: a.kind, outcome: 'FAILED', note: `${msg}${detail}` });
     }
   }
 

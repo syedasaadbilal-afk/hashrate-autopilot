@@ -113,6 +113,12 @@ export interface ObserveInputs {
    * in-memory provider selection, one tick behind). Absent = 'BRAIINS'.
    */
   readonly activeProvider?: import('./provider-select.js').Provider;
+  /**
+   * #dual-provider: the NiceHash order's delivered hashrate (PH/s), one tick
+   * behind. Used as the "actual delivered" when NiceHash is the active provider
+   * so floor / zero-hashrate alerts stay correct. null = treat as 0.
+   */
+  readonly nicehashDeliveredPh?: number | null;
 }
 
 /**
@@ -468,10 +474,20 @@ export async function observe(deps: ObserveDeps, inputs: ObserveInputs): Promise
   // speed_limit_ph, which is just the cap and says nothing about fills.
   const actual_owned_ph = sumDeliveredPh(owned_bids);
   const actual_unknown_ph = sumDeliveredPh(unknown_bids);
+  const braiins_ph = actual_owned_ph + actual_unknown_ph;
+  // #dual-provider: when NiceHash is the active provider, Braiins bids are
+  // parked (0 PH/s) but hashrate IS flowing via the NiceHash order. Use the
+  // NiceHash order's delivered speed as the "actual" so the floor / zero-
+  // hashrate alerts and the hero card don't false-fire. Braiins-active keeps
+  // the Braiins sum exactly as before.
+  const activeProvider = inputs.activeProvider ?? 'BRAIINS';
+  const provider_total_ph =
+    activeProvider === 'NICEHASH' ? (inputs.nicehashDeliveredPh ?? 0) : braiins_ph;
   const actual_hashrate = {
     owned_ph: actual_owned_ph,
     unknown_ph: actual_unknown_ph,
-    total_ph: actual_owned_ph + actual_unknown_ph,
+    total_ph: provider_total_ph,
+    braiins_ph,
   };
 
   // Cheap-mode sustained-window check (#50 / #160).

@@ -2707,6 +2707,10 @@ msgid "LIGHTNING PAYOUT"
 msgstr "LIGHTNING PAYOUT"
 
 #: src/pages/Status.tsx
+msgid "limit"
+msgstr "limit"
+
+#: src/pages/Status.tsx
 msgid "live"
 msgstr "live"
 
@@ -3081,6 +3085,10 @@ msgstr "NiceHash algorithm enum. For the Bitcoin market this is SHA256ASICBOOST 
 msgid "NiceHash currency market key. For SHA256AsicBoost this is BTC."
 msgstr "NiceHash currency market key. For SHA256AsicBoost this is BTC."
 
+#: src/pages/Status.tsx
+msgid "NiceHash evaluation not running (enable it in Config)."
+msgstr "NiceHash evaluation not running (enable it in Config)."
+
 #: src/pages/Config.tsx
 msgid "NiceHash fee"
 msgstr "NiceHash fee"
@@ -3092,6 +3100,10 @@ msgstr "NiceHash fill-line dust floor"
 #: src/pages/Config.tsx
 msgid "NiceHash market"
 msgstr "NiceHash market"
+
+#: src/pages/Status.tsx
+msgid "NiceHash marketplace API - reachable when the last tick priced the order book and read your order without error."
+msgstr "NiceHash marketplace API - reachable when the last tick priced the order book and read your order without error."
 
 #: src/pages/Config.tsx
 msgid "NiceHash marketplace fee, folded into the comparison the same way."
@@ -3184,6 +3196,10 @@ msgstr "No events match the current filters."
 #: src/pages/Status.tsx
 msgid "No hashrate available on the market right now."
 msgstr "No hashrate available on the market right now."
+
+#: src/pages/Status.tsx
+msgid "No NiceHash order. Enable NiceHash and set a pool id in Config to trade."
+msgstr "No NiceHash order. Enable NiceHash and set a pool id in Config to trade."
 
 #: src/pages/Config.tsx
 msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
@@ -3507,6 +3523,10 @@ msgstr "Optional. Useful if you'd like a second token only for read paths."
 #: src/pages/Config.tsx
 msgid "Optional. When set, every Telegram message from this daemon is prefixed with `[label] ` so you can tell which instance fired the alert if you run more than one daemon against the same bot/chat. Leave empty to send messages without a prefix."
 msgstr "Optional. When set, every Telegram message from this daemon is prefixed with `[label] ` so you can tell which instance fired the alert if you run more than one daemon against the same bot/chat. Leave empty to send messages without a prefix."
+
+#: src/pages/Status.tsx
+msgid "order id"
+msgstr "order id"
 
 #: src/pages/Status.tsx
 msgid "order price"

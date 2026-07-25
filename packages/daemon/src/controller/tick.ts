@@ -139,6 +139,9 @@ export class Controller {
       // One tick behind (updated at the end of the previous tick's provider
       // evaluation) - bounds the handover lag to one tick.
       activeProvider: this.activeProvider,
+      // #dual-provider: last-known NiceHash delivered speed (one tick behind),
+      // so floor / zero-hashrate alerts reflect NiceHash when it's active.
+      nicehashDeliveredPh: this.lastProviderEvaluation?.nicehashOrder?.acceptedSpeedPh ?? null,
     });
     this.belowFloorSince = state.below_floor_since;
     this.aboveFloorTicks = state.above_floor_ticks;
@@ -273,7 +276,7 @@ export class Controller {
         : state.config.target_hashrate_ph;
       await this.deps.tickMetricsRepo.insert({
         tick_at: state.tick_at,
-        delivered_ph: state.actual_hashrate.total_ph,
+        delivered_ph: state.actual_hashrate.braiins_ph,
         target_ph: effectiveTargetPh,
         floor_ph: state.config.minimum_floor_hashrate_ph,
         owned_bid_count: state.owned_bids.length,
@@ -506,7 +509,14 @@ export class Controller {
           marketFactor: book.marketFactor,
           displayMarketFactor: book.displayMarketFactor,
         };
-        await executeNicehash(svc, actions, state.run_mode, params, cfg.nicehash_target_hashrate_ph);
+        await executeNicehash(
+          svc,
+          actions,
+          state.run_mode,
+          params,
+          cfg.nicehash_target_hashrate_ph,
+          snapshot.limitPh,
+        );
       } catch (err) {
         console.warn(`[nicehash] order maintenance failed (non-fatal): ${(err as Error).message}`);
       }

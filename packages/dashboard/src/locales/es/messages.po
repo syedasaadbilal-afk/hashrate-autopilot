@@ -2707,6 +2707,10 @@ msgid "LIGHTNING PAYOUT"
 msgstr "PAGO POR LIGHTNING"
 
 #: src/pages/Status.tsx
+msgid "limit"
+msgstr ""
+
+#: src/pages/Status.tsx
 msgid "live"
 msgstr "en vivo"
 
@@ -3081,6 +3085,10 @@ msgstr ""
 msgid "NiceHash currency market key. For SHA256AsicBoost this is BTC."
 msgstr ""
 
+#: src/pages/Status.tsx
+msgid "NiceHash evaluation not running (enable it in Config)."
+msgstr ""
+
 #: src/pages/Config.tsx
 msgid "NiceHash fee"
 msgstr ""
@@ -3091,6 +3099,10 @@ msgstr ""
 
 #: src/pages/Config.tsx
 msgid "NiceHash market"
+msgstr ""
+
+#: src/pages/Status.tsx
+msgid "NiceHash marketplace API - reachable when the last tick priced the order book and read your order without error."
 msgstr ""
 
 #: src/pages/Config.tsx
@@ -3184,6 +3196,10 @@ msgstr "Ningún evento coincide con los filtros actuales."
 #: src/pages/Status.tsx
 msgid "No hashrate available on the market right now."
 msgstr "No hay hashrate disponible en el mercado en este momento."
+
+#: src/pages/Status.tsx
+msgid "No NiceHash order. Enable NiceHash and set a pool id in Config to trade."
+msgstr ""
 
 #: src/pages/Config.tsx
 msgid "No on-chain balance scanning. The Profit & Loss panel still shows your collected BTC from Ocean's payout ledger (on-chain + Lightning); this scanner only adds the chart's on-chain confirmation markers."
@@ -3507,6 +3523,10 @@ msgstr "Opcional. Útil si quieres un segundo token solo para lectura."
 #: src/pages/Config.tsx
 msgid "Optional. When set, every Telegram message from this daemon is prefixed with `[label] ` so you can tell which instance fired the alert if you run more than one daemon against the same bot/chat. Leave empty to send messages without a prefix."
 msgstr "Opcional. Cuando se establece, cada mensaje de Telegram de este daemon se antepone con `[etiqueta] ` para que puedas saber qué instancia disparó la alerta si ejecutas más de un daemon contra el mismo bot/chat. Déjalo vacío para enviar mensajes sin prefijo."
+
+#: src/pages/Status.tsx
+msgid "order id"
+msgstr ""
 
 #: src/pages/Status.tsx
 msgid "order price"

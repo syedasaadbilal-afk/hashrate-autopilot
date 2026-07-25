@@ -1085,6 +1085,7 @@ export function Status() {
             hashpricePH={financeQuery.data?.ocean?.hashprice_sat_per_ph_day ?? null}
             onRunMode={(m) => runModeMutation.mutate(m)}
             runModePending={runModeMutation.isPending}
+            nicehashOrder={nicehashOrder}
           />
         </div>
         <div className="lg:col-span-3 h-full">
@@ -1265,7 +1266,7 @@ export function Status() {
     // the marketplace. P&L sits below Bids as its own full-width
     // section; it's a financial summary of the pipeline, not a step.
     pipeline: (
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <section className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3">
         <Card
           title="Braiins"
           nextRefreshAtMs={s.next_tick_at}
@@ -1401,6 +1402,79 @@ export function Status() {
           nextTickAt={s.next_tick_at}
         />
         <OceanPanel />
+        {/* #dual-provider: NiceHash provider/API card, mirroring Braiins. */}
+        <Card
+          title="NiceHash"
+          nextRefreshAtMs={s.next_tick_at}
+          refetchQueryKey={['provider']}
+          badges={
+            <ReachabilityBadge
+              label={t`API reachable`}
+              reachable={providerQuery.data != null}
+              downLabel={t`API DOWN`}
+              title={t`NiceHash marketplace API - reachable when the last tick priced the order book and read your order without error.`}
+            />
+          }
+        >
+          {nicehashOrder?.exists ? (
+            <>
+              <Row
+                k={t`delivered`}
+                v={
+                  nicehashOrder.acceptedSpeedPh != null
+                    ? denomination.formatHashrate(nicehashOrder.acceptedSpeedPh)
+                    : '—'
+                }
+              />
+              <Row
+                k={t`limit`}
+                v={
+                  nicehashOrder.limitPh != null
+                    ? denomination.formatHashrate(nicehashOrder.limitPh)
+                    : '—'
+                }
+              />
+              <Row
+                k={t`order price`}
+                v={
+                  nicehashOrder.priceSatPerPhDay != null
+                    ? denomination.formatSatPerPhDay(
+                        Math.round(nicehashOrder.priceSatPerPhDay),
+                        intlLocale,
+                      )
+                    : '—'
+                }
+              />
+              <Row k={t`status`} v={nicehashOrder.status?.toLowerCase() ?? '—'} />
+              <Row
+                k={t`remaining`}
+                v={
+                  nicehashOrder.remainingBtc != null
+                    ? `${nicehashOrder.remainingBtc.toFixed(8)} BTC`
+                    : '—'
+                }
+              />
+              <Row
+                k={t`spent`}
+                v={
+                  nicehashOrder.spentBtc != null
+                    ? `${nicehashOrder.spentBtc.toFixed(8)} BTC`
+                    : '—'
+                }
+              />
+              <Row
+                k={t`order id`}
+                v={nicehashOrder.orderId ? nicehashOrder.orderId.slice(0, 8) : '—'}
+              />
+            </>
+          ) : (
+            <div className="text-sm text-slate-500">
+              {providerQuery.data
+                ? t`No NiceHash order. Enable NiceHash and set a pool id in Config to trade.`
+                : t`NiceHash evaluation not running (enable it in Config).`}
+            </div>
+          )}
+        </Card>
       </section>
     ),
     bids: (
@@ -1850,8 +1924,11 @@ function OperationsCard({
   hashpricePH,
   onRunMode,
   runModePending,
+  nicehashOrder,
 }: {
   s: StatusResponse;
+  /** #dual-provider: live NiceHash order to show when Braiins is parked. */
+  nicehashOrder?: ProviderEvaluation['nicehashOrder'];
   /**
    * Current owned-bid price in sat/PH/day. Under pay-your-bid this is
    * exactly the price Braiins charges per delivered EH-day, which is
@@ -1995,6 +2072,33 @@ function OperationsCard({
           </div>
         </div>
         </FitGroup>
+      ) : nicehashOrder?.exists ? (
+        /* #dual-provider: Braiins parked, NiceHash carrying the load - show its
+           price + delivered here instead of an empty "no active bid". */
+        <div className="grid grid-cols-2 gap-4 w-full">
+          <div className="flex flex-col items-center min-w-0">
+            <div className="text-[11px] uppercase tracking-wider text-amber-300 mb-1">
+              <Trans>NiceHash price</Trans>
+            </div>
+            <div className="text-3xl font-mono font-semibold tabular-nums text-slate-100">
+              {nicehashOrder.priceSatPerPhDay != null
+                ? Math.round(nicehashOrder.priceSatPerPhDay).toLocaleString()
+                : '—'}
+            </div>
+            <div className="text-xs text-slate-400 mt-1">sat/PH/day</div>
+          </div>
+          <div className="flex flex-col items-center min-w-0">
+            <div className="text-[11px] uppercase tracking-wider text-slate-100 mb-1">
+              <Trans>delivered</Trans>
+            </div>
+            <div className="text-3xl font-mono font-semibold tabular-nums text-emerald-300">
+              {nicehashOrder.acceptedSpeedPh != null
+                ? nicehashOrder.acceptedSpeedPh.toFixed(2)
+                : '—'}
+            </div>
+            <div className="text-xs text-slate-400 mt-1">PH/s</div>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col items-center">
           <div className="text-3xl font-mono text-slate-500">-</div>

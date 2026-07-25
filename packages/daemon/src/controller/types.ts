@@ -96,7 +96,19 @@ export interface UnknownBidSnapshot {
 export interface ActualHashrate {
   readonly owned_ph: number;
   readonly unknown_ph: number;
+  /**
+   * Provider-aware delivered hashrate: Braiins bid speeds when Braiins is the
+   * active provider, else the NiceHash order's delivered speed. This is what
+   * the floor / zero-hashrate alerts and the hero card key off, so they stay
+   * correct when NiceHash is carrying the load and Braiins bids are parked.
+   */
   readonly total_ph: number;
+  /**
+   * Braiins-only delivered hashrate (sum of owned+unknown bid speeds),
+   * regardless of active provider. Recorded to tick_metrics.delivered_ph so
+   * the AVG BRAIINS tile stays Braiins-specific.
+   */
+  readonly braiins_ph: number;
 }
 
 export interface State {
