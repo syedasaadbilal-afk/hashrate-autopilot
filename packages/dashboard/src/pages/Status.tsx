@@ -234,6 +234,61 @@ function ProviderPanel() {
         {p.switched ? ' · ' : ''}
         {p.switched ? <Trans>switched this tick</Trans> : null}
       </p>
+
+      {/* #dual-provider: live NiceHash order details (the "NiceHash card"). */}
+      {p.nicehashOrder?.exists ? (
+        <div className="mt-3 border-t border-slate-800 pt-3">
+          <div className="text-[11px] uppercase tracking-wider text-amber-400 mb-2">
+            <Trans>NiceHash order</Trans>{' '}
+            <span className="text-slate-500 normal-case tracking-normal">
+              {p.nicehashOrder.orderId ? p.nicehashOrder.orderId.slice(0, 8) : ''}
+              {p.nicehashOrder.status ? ` · ${p.nicehashOrder.status.toLowerCase()}` : ''}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-xs">
+            <div>
+              <div className="text-slate-500">
+                <Trans>delivered</Trans>
+              </div>
+              <div className="text-slate-200 tabular-nums">
+                {p.nicehashOrder.acceptedSpeedPh != null
+                  ? `${p.nicehashOrder.acceptedSpeedPh.toFixed(2)} PH/s`
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500">
+                <Trans>order price</Trans>
+              </div>
+              <div className="text-slate-200 tabular-nums">
+                {p.nicehashOrder.priceSatPerPhDay != null
+                  ? `${Math.round(p.nicehashOrder.priceSatPerPhDay).toLocaleString()} sat/PH/day`
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500">
+                <Trans>remaining</Trans>
+              </div>
+              <div className="text-slate-200 tabular-nums">
+                {p.nicehashOrder.remainingBtc != null
+                  ? `${p.nicehashOrder.remainingBtc.toFixed(8)} BTC`
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500">
+                <Trans>spent</Trans>
+              </div>
+              <div className="text-slate-200 tabular-nums">
+                {p.nicehashOrder.spentBtc != null
+                  ? `${p.nicehashOrder.spentBtc.toFixed(8)} BTC`
+                  : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -304,6 +359,16 @@ export function Status() {
     // client-side so they keep moving between polls.
     refetchInterval: 30_000,
   });
+
+  // #dual-provider: shared with ProviderPanel (same query key -> deduped).
+  // Used to surface the live NiceHash order in the BIDS section.
+  const providerQuery = useQuery({
+    queryKey: ['provider'],
+    queryFn: api.provider,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const nicehashOrder = providerQuery.data?.nicehashOrder ?? null;
 
   const runModeMutation = useMutation({
     mutationFn: (run_mode: (typeof RUN_MODES)[number]) => api.setRunMode(run_mode),
@@ -1052,6 +1117,7 @@ export function Status() {
         financeRangeData={financeRangeQuery.data}
         blockExplorerTemplate={configQuery.data?.config?.block_explorer_url_template}
         onTilesChange={handleTilesChange}
+        nicehashAcceptedPh={nicehashOrder?.acceptedSpeedPh ?? null}
       />
     ),
     hashrate: (
@@ -1341,9 +1407,68 @@ export function Status() {
       <section>
         <h3 className="text-xs uppercase tracking-wider text-slate-100 mb-2"><Trans>Bids</Trans></h3>
         {s.bids.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 text-slate-500 text-sm">
-            <Trans>no bids on this account</Trans>
-          </div>
+          nicehashOrder?.exists ? (
+            /* #dual-provider: no Braiins bids, but a live NiceHash order - show it. */
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold bg-amber-400/20 text-amber-300">
+                  NICEHASH
+                </span>
+                <span className="text-xs text-slate-500 tabular-nums">
+                  {nicehashOrder.orderId ? nicehashOrder.orderId.slice(0, 8) : ''}
+                  {nicehashOrder.status ? ` · ${nicehashOrder.status.toLowerCase()}` : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-sm">
+                <div>
+                  <div className="text-[11px] text-slate-500">
+                    <Trans>price</Trans>
+                  </div>
+                  <div className="text-slate-200 tabular-nums">
+                    {nicehashOrder.priceSatPerPhDay != null
+                      ? `${Math.round(nicehashOrder.priceSatPerPhDay).toLocaleString()}`
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-500">
+                    <Trans>delivered / cap</Trans>
+                  </div>
+                  <div className="text-slate-200 tabular-nums">
+                    {nicehashOrder.acceptedSpeedPh != null
+                      ? nicehashOrder.acceptedSpeedPh.toFixed(2)
+                      : '—'}
+                    {' / '}
+                    {nicehashOrder.limitPh != null ? nicehashOrder.limitPh.toFixed(2) : '—'} PH/s
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-500">
+                    <Trans>remaining</Trans>
+                  </div>
+                  <div className="text-slate-200 tabular-nums">
+                    {nicehashOrder.remainingBtc != null
+                      ? `${nicehashOrder.remainingBtc.toFixed(8)} BTC`
+                      : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-500">
+                    <Trans>spent</Trans>
+                  </div>
+                  <div className="text-slate-200 tabular-nums">
+                    {nicehashOrder.spentBtc != null
+                      ? `${nicehashOrder.spentBtc.toFixed(8)} BTC`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 text-slate-500 text-sm">
+              <Trans>no bids on this account</Trans>
+            </div>
+          )
         ) : (
           <>
             {/* Desktop: table */}
@@ -3654,6 +3779,16 @@ function FinancePanel({
               />
             </>
           )}
+        {/* #dual-provider: NiceHash order spend, included in spent above. The
+            Ocean revenue side already counts hashrate from both providers'
+            workers, so this keeps the P&L symmetric. */}
+        {data.spent_nicehash_sat != null && data.spent_nicehash_sat > 0 && (
+          <FinanceSubRow
+            label={t`NiceHash order`}
+            value={data.spent_nicehash_sat}
+            tooltip={t`BTC consumed on your NiceHash order (payedAmount), converted to sats. Included in the spent total so the P&L matches the Ocean revenue side, which counts hashrate from both Braiins and NiceHash workers.`}
+          />
+        )}
         <FinanceRow
           sign="plus"
           label={t`unpaid earnings (Ocean)`}

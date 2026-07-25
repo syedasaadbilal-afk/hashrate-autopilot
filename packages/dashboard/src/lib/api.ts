@@ -858,6 +858,19 @@ export interface ProviderEvaluation {
   nicehashAdvantagePct: number | null;
   switched: boolean;
   reason: string;
+  // #dual-provider: what the NiceHash order maintenance will do this tick.
+  nicehashAction?: string | null;
+  // #dual-provider: live NiceHash order for the card / BIDS list.
+  nicehashOrder?: {
+    exists: boolean;
+    orderId: string | null;
+    priceSatPerPhDay: number | null;
+    remainingBtc: number | null;
+    spentBtc: number | null;
+    acceptedSpeedPh: number | null;
+    limitPh: number | null;
+    status: string | null;
+  } | null;
 }
 
 export const api = {
@@ -1507,6 +1520,8 @@ export interface FinanceResponse {
   spent_scope: 'autopilot' | 'account';
   spent_closed_sat: number | null;
   spent_active_sat: number | null;
+  // #dual-provider: NiceHash order spend, included in spent_sat.
+  spent_nicehash_sat?: number | null;
   collected_sat: number | null;
   /** #323 - collected split by settlement rail. `onchain + lightning === collected_sat`. Null when no payout address is configured. */
   collected_onchain_sat: number | null;

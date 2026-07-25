@@ -224,6 +224,26 @@ export async function registerStatusRoute(
         : null,
     };
 
+    // #dual-provider: when NiceHash is the active provider, the Braiins bid is
+    // parked and decide() produces no Braiins action - so the Braiins-centric
+    // projection would misleadingly show a phantom CREATE_BID. Replace it with
+    // the real NiceHash order action for this tick (from the provider eval).
+    const providerEval = deps.controller.getProviderEvaluation();
+    const nicehashActive =
+      liveRunMode !== 'PAUSED' && providerEval?.activeProvider === 'NICEHASH';
+    const nextActionBase = nicehashActive
+      ? {
+          descriptor: null,
+          summary: providerEval?.nicehashAction
+            ? `NiceHash: ${providerEval.nicehashAction}`
+            : 'NiceHash is the active provider - Braiins bid parked.',
+          detail: 'Braiins bid is parked while NiceHash is cheaper (see the Provider panel).',
+          eta_ms: null,
+          event_started_ms: null,
+          event_kind: null,
+        }
+      : describeNextAction(stateForNextAction, liveRunMode);
+
     return {
       run_mode: liveRunMode,
       action_mode: 'NORMAL' as const,
@@ -232,7 +252,7 @@ export async function registerStatusRoute(
       next_tick_at: nextTickAt,
       tick_interval_ms: tickIntervalMs,
       next_action: {
-        ...describeNextAction(stateForNextAction, liveRunMode),
+        ...nextActionBase,
         last_executed: summariseLastExecuted(state.tick_at, executed),
       },
       balances,

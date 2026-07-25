@@ -98,6 +98,8 @@ export interface TilesBarProps {
    * `config.dashboard_tiles`.
    */
   readonly onTilesChange: (next: DashboardTileId[]) => void;
+  /** #dual-provider: live NiceHash accepted hashrate (PH/s) for the NiceHash tile. */
+  readonly nicehashAcceptedPh?: number | null;
 }
 
 interface TileResult {
@@ -125,6 +127,7 @@ interface TileCtx {
   readonly blockExplorerTemplate?: string;
   readonly intlLocale: string;
   readonly denomination: ReturnType<typeof useDenomination>;
+  readonly nicehashAcceptedPh?: number | null;
 }
 
 const EM_DASH = '—';
@@ -279,9 +282,12 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
     value: denomination.formatHashrate(stats?.avg_hashrate_ph ?? null, intlLocale),
     tooltip: t`Duration-weighted average of the hashrate Braiins reports delivering over the selected range. Includes downtime in the denominator so a bad stretch shows up here, not just on the live card.`,
   }),
-  avg_datum: ({ stats, intlLocale, denomination }) => ({
-    value: denomination.formatHashrate(stats?.avg_datum_hashrate_ph ?? null, intlLocale),
-    tooltip: t`Duration-weighted average of the hashrate Datum measures at the gateway over the selected range. A sustained gap below Avg Braiins means Braiins is billing for hashrate Datum never saw arrive.`,
+  // #dual-provider: this tile slot now shows NiceHash (Datum stats are
+  // unconfigured on this deployment). Value is the live accepted hashrate on
+  // the NiceHash order - the equivalent of Avg Braiins for the NiceHash side.
+  avg_datum: ({ intlLocale, denomination, nicehashAcceptedPh }) => ({
+    value: denomination.formatHashrate(nicehashAcceptedPh ?? null, intlLocale),
+    tooltip: t`Live accepted hashrate on your NiceHash order (the NiceHash-side equivalent of Avg Braiins). Sourced from the order's acceptedCurrentSpeed each tick.`,
   }),
   avg_ocean: ({ stats, intlLocale, denomination }) => ({
     value: denomination.formatHashrate(stats?.avg_ocean_hashrate_ph ?? null, intlLocale),
@@ -660,7 +666,7 @@ function labelFor(id: DashboardTileId): string {
   switch (id) {
     case 'uptime': return t`uptime`;
     case 'avg_braiins': return t`avg braiins`;
-    case 'avg_datum': return t`avg datum`;
+    case 'avg_datum': return t`avg nicehash`;
     case 'avg_ocean': return t`avg ocean`;
     case 'avg_cost_delivered': return t`avg cost delivered`;
     case 'avg_cost_vs_hashprice': return t`avg cost vs hashprice`;
@@ -762,6 +768,7 @@ function TilesBarImpl({
   financeRangeData,
   blockExplorerTemplate,
   onTilesChange,
+  nicehashAcceptedPh,
 }: TilesBarProps) {
   const { i18n } = useLingui();
   void i18n;
@@ -790,6 +797,7 @@ function TilesBarImpl({
     blockExplorerTemplate,
     intlLocale: intlLocale ?? 'en-US',
     denomination,
+    nicehashAcceptedPh,
   };
 
   const replaceAt = (idx: number, next: DashboardTileId) => {

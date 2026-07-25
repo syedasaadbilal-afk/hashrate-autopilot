@@ -50,6 +50,28 @@ export interface ProviderEvaluationSnapshot {
   readonly nicehashAdvantagePct: number | null;
   readonly switched: boolean;
   readonly reason: string;
+  /**
+   * Human summary of what the NiceHash order maintenance will do this tick
+   * (create / refill / lower price / park / hold), for the dashboard's Next
+   * Action card when NiceHash is the active provider. null until the order
+   * maintenance has run (pool id set) or when NiceHash is inactive.
+   */
+  readonly nicehashAction: string | null;
+  /**
+   * Live NiceHash order snapshot for the dashboard's NiceHash card, BIDS list,
+   * and NiceHash-spend line in P&L. All null until the order maintenance runs
+   * (pool id set) with a clean lookup, or when there's no order.
+   */
+  readonly nicehashOrder: {
+    readonly exists: boolean;
+    readonly orderId: string | null;
+    readonly priceSatPerPhDay: number | null;
+    readonly remainingBtc: number | null;
+    readonly spentBtc: number | null;
+    readonly acceptedSpeedPh: number | null;
+    readonly limitPh: number | null;
+    readonly status: string | null;
+  } | null;
 }
 
 export interface TickResult {
@@ -383,6 +405,8 @@ export class Controller {
       nicehashAdvantagePct: evald.selection.nicehashAdvantagePct,
       switched: evald.selection.switched,
       reason: evald.selection.reason,
+      nicehashAction: null,
+      nicehashOrder: null,
     };
 
     if (evald.selection.switched) {
@@ -405,6 +429,38 @@ export class Controller {
             `price=${snapshot.currentPriceSatPerPhDay === null ? '-' : Math.round(snapshot.currentPriceSatPerPhDay)} sat/PH/day ` +
             `remaining=${snapshot.remainingBtc === null ? '-' : snapshot.remainingBtc.toFixed(8)} BTC`,
         );
+        // Surface the live order to the dashboard (card / BIDS / P&L spend) via
+        // /api/provider. Only overwrite with a clean lookup so a transient blip
+        // doesn't blank the card - a failed lookup keeps the last good order.
+        if (snapshot.lookupOk && this.lastProviderEvaluation) {
+          this.lastProviderEvaluation = {
+            ...this.lastProviderEvaluation,
+            nicehashOrder: {
+              exists: snapshot.exists,
+              orderId: snapshot.orderId,
+              priceSatPerPhDay: snapshot.currentPriceSatPerPhDay,
+              remainingBtc: snapshot.remainingBtc,
+              spentBtc: snapshot.spentBtc,
+              acceptedSpeedPh: snapshot.acceptedSpeedPh,
+              limitPh: snapshot.limitPh,
+              status: snapshot.statusCode,
+            },
+          };
+        }
+        // Safety gate: if the order lookup didn't cleanly succeed, its result is
+        // UNKNOWN - not a confirmed "no order". Hold this tick rather than risk a
+        // CREATE that would duplicate an existing order on a transient API blip.
+        // Order maintenance simply resumes on the next successful lookup.
+        if (!snapshot.lookupOk) {
+          console.warn('[nicehash] order lookup unavailable this tick - holding (no create/edit)');
+          if (this.lastProviderEvaluation) {
+            this.lastProviderEvaluation = {
+              ...this.lastProviderEvaluation,
+              nicehashAction: 'order status unavailable this tick - holding',
+            };
+          }
+          return;
+        }
         const parkPrice =
           evald.nicehashFillLineSatPerPhDay !== null
             ? computeParkPrice({
@@ -430,6 +486,19 @@ export class Controller {
           createAmountBtc: cfg.nicehash_create_amount_btc,
           now: state.tick_at,
         });
+        // Surface the NiceHash next action to the dashboard's Next Action card
+        // (via /api/provider) so it reflects NiceHash, not a phantom Braiins bid.
+        const meaningful = actions.filter((a) => a.kind !== 'NONE');
+        const nhActionSummary =
+          meaningful.length > 0
+            ? meaningful.map((a) => `${a.kind}: ${a.reason}`).join('; ')
+            : 'NiceHash order optimal - holding this tick';
+        if (this.lastProviderEvaluation) {
+          this.lastProviderEvaluation = {
+            ...this.lastProviderEvaluation,
+            nicehashAction: nhActionSummary,
+          };
+        }
         const params: NiceHashLiveParams = {
           algorithm: cfg.nicehash_algorithm,
           market: book.market,

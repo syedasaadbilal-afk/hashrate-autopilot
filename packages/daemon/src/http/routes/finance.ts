@@ -76,6 +76,13 @@ export interface FinanceResponse {
    */
   readonly spent_closed_sat: number | null;
   readonly spent_active_sat: number | null;
+  /**
+   * #dual-provider: NiceHash order spend (consumed BTC → sats), included in
+   * `spent_sat`. Symmetric with the Ocean revenue side, which already counts
+   * hashrate delivered by BOTH Braiins and NiceHash workers. null when there's
+   * no NiceHash order (or dual-provider is off).
+   */
+  readonly spent_nicehash_sat: number | null;
   readonly collected_sat: number | null;
   /**
    * #323: collected split by settlement rail, so the P&L panel can show
@@ -136,6 +143,12 @@ export interface FinanceDeps {
   readonly oceanPayoutsRepo: OceanPayoutsRepo;
   /** #323: provides the collected computing/ready/idle status for the panel. */
   readonly oceanPayoutsService: OceanPayoutsService;
+  /**
+   * #dual-provider: current NiceHash order spend in sats (consumed BTC ×1e8),
+   * or null when there's no order. Decoupled from the controller type - wired
+   * in server.ts from the latest provider evaluation.
+   */
+  readonly nicehashSpentSat?: () => number | null;
 }
 
 /**
@@ -336,6 +349,13 @@ export async function registerFinanceRoute(
       spent_sat = await deps.ownedBidsRepo.sumLifetimeConsumedSat();
     }
 
+    // #dual-provider: add NiceHash order spend so the spend side is symmetric
+    // with the Ocean revenue side (which already counts both providers' shares).
+    const spent_nicehash_sat = deps.nicehashSpentSat?.() ?? null;
+    if (spent_nicehash_sat !== null) {
+      spent_sat += spent_nicehash_sat;
+    }
+
     // #323: collected = LIFETIME RECEIVED via Ocean's authoritative
     // earnpay payout list, which sees BOTH on-chain and Lightning
     // settlements. This replaces the on-chain-only reward_events
@@ -405,6 +425,7 @@ export async function registerFinanceRoute(
       spent_scope: scope,
       spent_closed_sat,
       spent_active_sat,
+      spent_nicehash_sat,
       collected_sat,
       collected_onchain_sat,
       collected_lightning_sat,

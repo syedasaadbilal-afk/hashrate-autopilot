@@ -650,7 +650,6 @@ msgstr "coste medio entregado"
 msgid "avg cost vs hashprice"
 msgstr "costo promedio vs hashprice"
 
-#: src/components/TilesBar.tsx
 #: src/pages/Status.tsx
 msgid "avg datum"
 msgstr "promedio datum"
@@ -662,6 +661,10 @@ msgstr "entregado promedio ({rangeLabel})"
 #: src/pages/Status.tsx
 msgid "avg hashprice ({rangeLabel})"
 msgstr "hashprice promedio ({rangeLabel})"
+
+#: src/components/TilesBar.tsx
+msgid "avg nicehash"
+msgstr ""
 
 #: src/components/TilesBar.tsx
 #: src/pages/Status.tsx
@@ -1135,6 +1138,10 @@ msgstr "Lectura propia de Braiins `state_estimate.avg_speed_ph` - su estimación
 #: src/pages/Config.tsx
 msgid "Browsers block audio until the page sees a user click; logging in counts. The first poll after a fresh page load establishes a silent baseline so you don't get a sound for every backlog row. Test plays whatever's selected above (no save needed)."
 msgstr "Los navegadores bloquean el audio hasta que la página detecta un clic del usuario; iniciar sesión cuenta. El primer sondeo tras una carga de página fresca establece una línea base silenciosa, así no obtienes un sonido por cada fila pendiente. Test reproduce lo seleccionado arriba (no es necesario guardar)."
+
+#: src/pages/Status.tsx
+msgid "BTC consumed on your NiceHash order (payedAmount), converted to sats. Included in the spent total so the P&L matches the Ocean revenue side, which counts hashrate from both Braiins and NiceHash workers."
+msgstr ""
 
 #: src/pages/Config.tsx
 msgid "BTC payout address"
@@ -1897,10 +1904,6 @@ msgstr "Promedio ponderado por duración del hashrate que Braiins reporta entreg
 #: src/pages/Status.tsx
 msgid "Duration-weighted average of the hashrate Braiins reports delivering, computed over the selected chart range. Includes downtime (where delivered = 0) so a bad stretch shows up in the average, not just the live card. Updates with the range selector above."
 msgstr "Promedio ponderado por duración del hashrate que Braiins reporta entregar, calculado sobre el rango de gráfico seleccionado. Incluye tiempo caído (donde entregado = 0) para que un mal tramo aparezca en el promedio, no solo en la tarjeta en vivo. Se actualiza con el selector de rango de arriba."
-
-#: src/components/TilesBar.tsx
-msgid "Duration-weighted average of the hashrate Datum measures at the gateway over the selected range. A sustained gap below Avg Braiins means Braiins is billing for hashrate Datum never saw arrive."
-msgstr "Promedio ponderado por duración del hashrate que Datum mide en la puerta de enlace sobre el rango seleccionado. Una brecha sostenida bajo Avg Braiins significa que Braiins factura hashrate que Datum nunca vio llegar."
 
 #: src/pages/Status.tsx
 msgid "Duration-weighted average of the hashrate Datum measures at the gateway, computed over the selected chart range. A sustained gap below Avg Braiins means Braiins is billing for hashrate Datum never saw arrive. Updates with the range selector above."
@@ -2717,6 +2720,10 @@ msgid "LIVE"
 msgstr "LIVE"
 
 #: src/components/TilesBar.tsx
+msgid "Live accepted hashrate on your NiceHash order (the NiceHash-side equivalent of Avg Braiins). Sourced from the order's acceptedCurrentSpeed each tick."
+msgstr ""
+
+#: src/components/TilesBar.tsx
 msgid "Live effective hashrate target. Steps to cheap_target_hashrate_ph when cheap-mode engages, back to target_hashrate_ph when it disengages."
 msgstr "Objetivo de hashrate efectivo en vivo. Salta a cheap_target_hashrate_ph cuando se activa el modo barato y vuelve a target_hashrate_ph cuando se desactiva."
 
@@ -3092,6 +3099,10 @@ msgstr ""
 
 #: src/pages/Config.tsx
 msgid "NiceHash must be strictly more than this percent cheaper than Braiins (fees included) to win. Below it, Braiins stays. A pure switching margin, separate from the fees below."
+msgstr ""
+
+#: src/pages/Status.tsx
+msgid "NiceHash order"
 msgstr ""
 
 #: src/pages/Config.tsx
@@ -3496,6 +3507,10 @@ msgstr "Opcional. Útil si quieres un segundo token solo para lectura."
 #: src/pages/Config.tsx
 msgid "Optional. When set, every Telegram message from this daemon is prefixed with `[label] ` so you can tell which instance fired the alert if you run more than one daemon against the same bot/chat. Leave empty to send messages without a prefix."
 msgstr "Opcional. Cuando se establece, cada mensaje de Telegram de este daemon se antepone con `[etiqueta] ` para que puedas saber qué instancia disparó la alerta si ejecutas más de un daemon contra el mismo bot/chat. Déjalo vacío para enviar mensajes sin prefijo."
+
+#: src/pages/Status.tsx
+msgid "order price"
+msgstr ""
 
 #: src/pages/Config.tsx
 msgid "Order, separators, 12h vs 24h. Month names always follow your UI language."
@@ -4094,6 +4109,10 @@ msgstr "ratio de rechazo"
 msgid "rejection ratio (Braiins)"
 msgstr "ratio de rechazo (Braiins)"
 
+#: src/pages/Status.tsx
+msgid "remaining"
+msgstr ""
+
 #: src/pages/Login.tsx
 msgid "Remember me on this device"
 msgstr "Recordarme en este dispositivo"
@@ -4538,6 +4557,10 @@ msgstr "gasto/día ({0})"
 #: src/pages/Status.tsx
 msgid "spend/day ({rangeLabel})"
 msgstr "gasto/día ({rangeLabel})"
+
+#: src/pages/Status.tsx
+msgid "spent"
+msgstr ""
 
 #: src/pages/Status.tsx
 msgid "spent (autopilot)"

@@ -320,6 +320,12 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     tickMetricsRepo: deps.tickMetricsRepo,
     oceanPayoutsRepo: deps.oceanPayoutsRepo,
     oceanPayoutsService: deps.oceanPayoutsService,
+    // #dual-provider: NiceHash order spend from the latest provider evaluation.
+    nicehashSpentSat: () => {
+      const pe = deps.controller.getProviderEvaluation();
+      const spentBtc = pe?.nicehashOrder?.spentBtc ?? null;
+      return spentBtc !== null ? Math.round(spentBtc * 1e8) : null;
+    },
   });
   await registerBtcPriceRoute(app, {
     btcPriceService: deps.btcPriceService,

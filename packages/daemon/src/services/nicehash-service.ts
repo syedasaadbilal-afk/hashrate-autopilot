@@ -37,6 +37,22 @@ export interface NiceHashOrderSnapshot {
   readonly orderId: string | null;
   readonly currentPriceSatPerPhDay: number | null;
   readonly remainingBtc: number | null;
+  /** BTC consumed on the order so far (payedAmount). null if unknown. */
+  readonly spentBtc: number | null;
+  /** Live accepted hashrate on the order, PH/s. null if unknown. */
+  readonly acceptedSpeedPh: number | null;
+  /** Order speed limit (target), PH/s. null if unknown. */
+  readonly limitPh: number | null;
+  /** Order status code (e.g. 'ACTIVE'). null if unknown. */
+  readonly statusCode: string | null;
+  /**
+   * True only when the orders API call completed cleanly (whether or not an
+   * order was found). False when the lookup failed (network/API error) so the
+   * result is UNKNOWN, not a confirmed "no order". The controller must never
+   * CREATE a new order on an unknown lookup - that's how a transient blip would
+   * otherwise open a duplicate order. See tick.ts.
+   */
+  readonly lookupOk: boolean;
   /** Raw order object, for diagnostics in the DRY-RUN validation logs. */
   readonly raw?: unknown;
 }
@@ -126,21 +142,34 @@ export class NiceHashService {
     market: string,
     marketFactor: number,
   ): Promise<NiceHashOrderSnapshot> {
-    const none: NiceHashOrderSnapshot = {
+    // Confirmed "no order" (the API answered cleanly): lookupOk = true.
+    const confirmedNone: NiceHashOrderSnapshot = {
       exists: false,
       orderId: null,
       currentPriceSatPerPhDay: null,
       remainingBtc: null,
+      spentBtc: null,
+      acceptedSpeedPh: null,
+      limitPh: null,
+      statusCode: null,
+      lookupOk: true,
     };
+    // Unknown result (the API call failed): lookupOk = false so the controller
+    // holds instead of assuming there's no order and creating a duplicate.
+    const failedLookup: NiceHashOrderSnapshot = { ...confirmedNone, lookupOk: false };
     try {
       const resp = await this.client.getMyOrders(algorithm, market);
       this.lastApiOkAt = this.now();
       const list = Array.isArray(resp.list) ? resp.list : [];
-      // "Active" = alive and not cancelled/completed. Be permissive: any order
-      // that isn't clearly dead counts, so we never place a duplicate.
+      // "Active" = not cancelled/completed/expired, judged by the order STATUS
+      // code only. We deliberately do NOT use the transient `alive` flag here:
+      // NiceHash flips `alive` to false for a live ACTIVE order whenever it's
+      // momentarily receiving no hashrate, and treating that as "dead" made the
+      // controller briefly see no order and want to CREATE a duplicate (caught
+      // in DRY-RUN, 2026-07-24). Be permissive: only a terminal status is dead.
       const active = list.filter((o) => {
         const status = (o.status as { code?: string } | undefined)?.code ?? '';
-        const dead = /CANCELLED|COMPLETED|DEAD|EXPIRED/i.test(status) || o.alive === false;
+        const dead = /CANCELLED|COMPLETED|DEAD|EXPIRED/i.test(status);
         return !dead;
       });
       const order = active[0];
@@ -156,13 +185,22 @@ export class NiceHashService {
         } else {
           console.info('[nicehash] order snapshot: no orders returned for this algorithm/market');
         }
-        return none;
+        return confirmedNone;
       }
       const priceBtc = Number(order.price);
       const amount = Number(order.amount ?? 0);
       const payed = Number(order.payedAmount ?? 0);
       const remainingBtc = Number.isFinite(amount) && Number.isFinite(payed) ? amount - payed : null;
       const priceSat = Number.isFinite(priceBtc) ? priceToSatPerPhDay(priceBtc, marketFactor) : null;
+      // NiceHash reports speed/limit in the display unit (EH for SHA256 BTC);
+      // ×1000 converts EH→PH. Defensive Number() parse; null if not present.
+      const raw = order as Record<string, unknown>;
+      const acceptedRaw = Number(raw['acceptedCurrentSpeed']);
+      const limitRaw = Number(raw['limit']);
+      const acceptedSpeedPh = Number.isFinite(acceptedRaw) ? acceptedRaw * 1000 : null;
+      const limitPh = Number.isFinite(limitRaw) ? limitRaw * 1000 : null;
+      const spentBtc = Number.isFinite(payed) ? payed : null;
+      const statusCode = (order.status as { code?: string } | undefined)?.code ?? null;
       // One-line validation snapshot: lets an operator confirm (in DRY-RUN,
       // before going LIVE) that the daemon parses their real order correctly -
       // the id/price/remaining should match what NiceHash's own UI shows.
@@ -176,11 +214,16 @@ export class NiceHashService {
         orderId: order.id,
         currentPriceSatPerPhDay: priceSat,
         remainingBtc,
+        spentBtc,
+        acceptedSpeedPh,
+        limitPh,
+        statusCode,
+        lookupOk: true,
         raw: order,
       };
     } catch (err) {
       console.warn(`[nicehash] getMyOrder(${algorithm}/${market}) failed: ${(err as Error).message}`);
-      return none;
+      return failedLookup;
     }
   }
 
