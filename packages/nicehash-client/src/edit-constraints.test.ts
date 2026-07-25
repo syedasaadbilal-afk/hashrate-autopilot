@@ -1,22 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluateNicehashPriceEdit } from './edit-constraints.js';
+import {
+  evaluateNicehashPriceEdit,
+  parseNicehashDecreaseCooldownSeconds,
+} from './edit-constraints.js';
 
 const T0 = 1_000_000_000_000;
 const MIN = 60_000;
 
 describe('evaluateNicehashPriceEdit - increases', () => {
-  it('allows any increase regardless of cooldown or step', () => {
+  it('allows any increase regardless of cooldown or cap', () => {
     const r = evaluateNicehashPriceEdit({
       currentPriceSatPerPhDay: 48_000,
-      desiredPriceSatPerPhDay: 48_050, // +50, below the 200 step
+      desiredPriceSatPerPhDay: 48_600, // +600, above the 200 cap - still fine
       lastDecreaseAtMs: T0, // just decreased - would block a decrease
       now: T0 + 1000, // inside cooldown
       constraints: {},
     });
     expect(r.allowed).toBe(true);
     expect(r.kind).toBe('INCREASE');
-    expect(r.submitPriceSatPerPhDay).toBe(48_050);
+    expect(r.submitPriceSatPerPhDay).toBe(48_600);
   });
 });
 
@@ -33,43 +36,35 @@ describe('evaluateNicehashPriceEdit - decreases', () => {
     expect(r.denialReason).toBe('DECREASE_COOLDOWN');
   });
 
-  it('allows a decrease once the cooldown has elapsed', () => {
+  it('clamps a large decrease to ONE cap-sized step (never a multiple)', () => {
+    // Want to come down 600; NiceHash caps a single edit at 200, so we submit
+    // exactly current-200 and finish the rest on later ticks. This is the
+    // regression: the old code snapped to 600 in one go and NiceHash 5063'd it.
     const r = evaluateNicehashPriceEdit({
       currentPriceSatPerPhDay: 48_000,
-      desiredPriceSatPerPhDay: 47_600, // -400 = 2 whole steps
+      desiredPriceSatPerPhDay: 47_400, // -600 = 3 steps' worth
       lastDecreaseAtMs: T0,
       now: T0 + 10 * MIN,
       constraints: {},
     });
     expect(r.allowed).toBe(true);
     expect(r.kind).toBe('DECREASE');
-    expect(r.submitPriceSatPerPhDay).toBe(47_600);
+    expect(r.submitPriceSatPerPhDay).toBe(47_800); // 48,000 - 200 (one step only)
+    expect(r.clampedByCap).toBe(true);
   });
 
-  it('snaps a decrease down to whole 200-sat steps, never below target', () => {
-    // Want to come down 500; only 2 whole steps (400) are allowed -> land at 47,600 (>= 47,500).
+  it('goes straight to target when it is within one step', () => {
     const r = evaluateNicehashPriceEdit({
       currentPriceSatPerPhDay: 48_000,
-      desiredPriceSatPerPhDay: 47_500,
+      desiredPriceSatPerPhDay: 47_850, // -150 <= 200 cap
       lastDecreaseAtMs: null,
       now: T0,
       constraints: {},
     });
     expect(r.allowed).toBe(true);
-    expect(r.submitPriceSatPerPhDay).toBe(47_600); // 48,000 - 2*200
-    expect(r.submitPriceSatPerPhDay!).toBeGreaterThanOrEqual(47_500);
-  });
-
-  it('blocks a decrease smaller than one step', () => {
-    const r = evaluateNicehashPriceEdit({
-      currentPriceSatPerPhDay: 48_000,
-      desiredPriceSatPerPhDay: 47_850, // -150 < 200
-      lastDecreaseAtMs: null,
-      now: T0,
-      constraints: {},
-    });
-    expect(r.allowed).toBe(false);
-    expect(r.denialReason).toBe('DECREASE_BELOW_MIN_STEP');
+    expect(r.kind).toBe('DECREASE');
+    expect(r.submitPriceSatPerPhDay).toBe(47_850); // exact target, no overshoot
+    expect(r.clampedByCap).toBe(false);
   });
 
   it('allows an exact one-step decrease', () => {
@@ -82,18 +77,69 @@ describe('evaluateNicehashPriceEdit - decreases', () => {
     });
     expect(r.allowed).toBe(true);
     expect(r.submitPriceSatPerPhDay).toBe(47_800);
+    expect(r.clampedByCap).toBe(false);
   });
 
-  it('honors custom step and cooldown', () => {
+  it('never overshoots below the desired price', () => {
     const r = evaluateNicehashPriceEdit({
       currentPriceSatPerPhDay: 48_000,
-      desiredPriceSatPerPhDay: 47_500,
+      desiredPriceSatPerPhDay: 47_950, // -50 only
       lastDecreaseAtMs: null,
       now: T0,
-      constraints: { minPriceDecreaseStepSatPerPhDay: 500, priceDecreaseCooldownMs: 5 * MIN },
+      constraints: {},
+    });
+    expect(r.submitPriceSatPerPhDay!).toBeGreaterThanOrEqual(47_950);
+  });
+
+  it('honors a custom cap and cooldown', () => {
+    const r = evaluateNicehashPriceEdit({
+      currentPriceSatPerPhDay: 48_000,
+      desiredPriceSatPerPhDay: 47_000, // -1000
+      lastDecreaseAtMs: null,
+      now: T0,
+      constraints: { maxPriceDecreaseStepSatPerPhDay: 500, priceDecreaseCooldownMs: 5 * MIN },
     });
     expect(r.allowed).toBe(true);
-    expect(r.submitPriceSatPerPhDay).toBe(47_500); // exactly one 500 step
+    expect(r.submitPriceSatPerPhDay).toBe(47_500); // one 500 step
+    expect(r.clampedByCap).toBe(true);
+  });
+
+  it('still honors the deprecated min* field name as the cap', () => {
+    const r = evaluateNicehashPriceEdit({
+      currentPriceSatPerPhDay: 48_000,
+      desiredPriceSatPerPhDay: 47_000,
+      lastDecreaseAtMs: null,
+      now: T0,
+      constraints: { minPriceDecreaseStepSatPerPhDay: 300 },
+    });
+    expect(r.submitPriceSatPerPhDay).toBe(47_700); // one 300 step
+  });
+});
+
+describe('parseNicehashDecreaseCooldownSeconds', () => {
+  it('extracts the exact seconds from a live cooldown rejection body', () => {
+    const body = {
+      error_id: 'abc',
+      errors: [
+        {
+          code: 5062,
+          message:
+            'Order price decreased not allowed within 10 minutes of last price change. Seconds till available: 544',
+        },
+      ],
+    };
+    expect(parseNicehashDecreaseCooldownSeconds(body)).toBe(544);
+  });
+
+  it('returns null for an unrelated error body (e.g. 5063 too-big)', () => {
+    const body = { errors: [{ code: 5063, message: 'Order price change is too big' }] };
+    expect(parseNicehashDecreaseCooldownSeconds(body)).toBeNull();
+  });
+
+  it('returns null for malformed / non-cooldown bodies', () => {
+    expect(parseNicehashDecreaseCooldownSeconds(null)).toBeNull();
+    expect(parseNicehashDecreaseCooldownSeconds({})).toBeNull();
+    expect(parseNicehashDecreaseCooldownSeconds('nope')).toBeNull();
   });
 });
 

@@ -97,15 +97,15 @@ describe('decideNicehash - price tracking obeys NiceHash step/cooldown', () => {
     expect(actions.every((a) => a.kind !== 'CANCEL' && a.kind !== 'CREATE')).toBe(true);
   });
 
-  it('snaps a decrease to whole 200-steps', () => {
+  it('caps a large decrease at one 200-step per edit (NiceHash 5063 fix)', () => {
     const actions = decideNicehash({
       ...BASE,
       providerActive: true,
-      desiredPriceSatPerPhDay: 47_500, // want -500, snaps to -400
+      desiredPriceSatPerPhDay: 47_500, // want -500; capped to one -200 step this edit
       order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
     });
     const edit = actions.find((a) => a.kind === 'EDIT_PRICE')!;
-    expect(edit.submitPriceSatPerPhDay).toBe(47_600);
+    expect(edit.submitPriceSatPerPhDay).toBe(47_800); // 48,000 - 200 (one step only)
   });
 
   it('holds price during the decrease cooldown but still refills if low', () => {
@@ -142,8 +142,9 @@ describe('decideNicehash - switch-away parks (never cancels)', () => {
     });
     expect(a!.kind).toBe('PARK');
     expect(a!.orderId).toBe('nh-1');
-    // decrease snaps to whole 200-steps at/above the 20,000 park target
-    expect(a!.submitPriceSatPerPhDay).toBe(20_000); // 48,000 - 140*200 = 20,000 exactly
+    // Parking now walks down one 200-step per edit toward the park target
+    // (a single 28,000-sat drop would bust NiceHash's per-edit cap / 5063).
+    expect(a!.submitPriceSatPerPhDay).toBe(47_800); // 48,000 - 200 (one step)
   });
 
   it('does nothing when the order is already parked', () => {

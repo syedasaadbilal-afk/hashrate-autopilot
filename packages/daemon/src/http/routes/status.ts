@@ -231,13 +231,25 @@ export async function registerStatusRoute(
     const providerEval = deps.controller.getProviderEvaluation();
     const nicehashActive =
       liveRunMode !== 'PAUSED' && providerEval?.activeProvider === 'NICEHASH';
+    // #dual-provider: NiceHash reports the exact seconds left on its 10-min
+    // price-decrease cooldown (from a rejected lower). Surface it in the action
+    // card so the operator sees precisely when the next lower can land, rather
+    // than watching the daemon retry blindly.
+    const nhCooldownSecs = providerEval?.nicehashDecreaseCooldownSecondsLeft ?? null;
+    const cooldownNote =
+      nhCooldownSecs !== null && nhCooldownSecs > 0
+        ? ` Price-decrease cooldown: ${formatCooldownLeft(nhCooldownSecs)} left ` +
+          '(NiceHash allows one step down per 10 min).'
+        : '';
     const nextActionBase = nicehashActive
       ? {
           descriptor: null,
           summary: providerEval?.nicehashAction
             ? `NiceHash: ${providerEval.nicehashAction}`
             : 'NiceHash is the active provider - Braiins bid parked.',
-          detail: 'Braiins bid is parked while NiceHash is cheaper (see the Provider panel).',
+          detail:
+            'Braiins bid is parked while NiceHash is cheaper (see the Provider panel).' +
+            cooldownNote,
           eta_ms: null,
           event_started_ms: null,
           event_kind: null,
@@ -303,6 +315,13 @@ export async function registerStatusRoute(
       chain_tip: chainTipView(deps.chainTipPoller?.getSnapshot() ?? null),
     };
   });
+}
+
+/** Format a whole-second cooldown as "Xm Ys" (or "Ys" under a minute). */
+function formatCooldownLeft(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 /** #335: map the poller's camelCase snapshot to the status field shape. */

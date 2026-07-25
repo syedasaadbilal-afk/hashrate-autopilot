@@ -1,0 +1,11 @@
+-- #dual-provider: persist the active provider across restarts.
+--
+-- Previously the in-memory provider selection reset to BRAIINS on every boot,
+-- so a restart while NiceHash was active would place a throwaway Braiins bid on
+-- the first tick - which then can't be cancelled during Braiins' creation grace
+-- period, leaving both providers running for a few minutes. Persisting the last
+-- active provider lets the daemon resume on NiceHash (no Braiins bid at all).
+--
+-- Additive + nullable; existing rows read null and fall back to BRAIINS. Safe
+-- to re-apply (the migration runner tolerates a duplicate-column error).
+ALTER TABLE runtime_state ADD COLUMN active_provider TEXT;

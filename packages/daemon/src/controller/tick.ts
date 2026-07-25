@@ -13,6 +13,8 @@
  */
 
 
+import { NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS } from '@hashrate-autopilot/nicehash-client';
+
 import { decide } from './decide.js';
 import { decideNicehash } from './decide-nicehash.js';
 import { evaluateProviders, type EvaluateProvidersResult } from './evaluate-providers.js';
@@ -72,6 +74,14 @@ export interface ProviderEvaluationSnapshot {
     readonly limitPh: number | null;
     readonly status: string | null;
   } | null;
+  /**
+   * Exact seconds left on NiceHash's 10-min price-DECREASE cooldown, as
+   * reported by NiceHash itself on a rejected decrease ("Seconds till
+   * available: N"). Surfaced in the dashboard's Next Action card so the
+   * operator sees precisely when the next lower can land. null when not on
+   * cooldown / unknown.
+   */
+  readonly nicehashDecreaseCooldownSecondsLeft: number | null;
 }
 
 export interface TickResult {
@@ -108,6 +118,27 @@ export class Controller {
   private lastProviderEvaluation: ProviderEvaluationSnapshot | null = null;
 
   /**
+   * #dual-provider: epoch-ms until NiceHash's 10-min price-DECREASE cooldown
+   * clears. Learned from (a) our own successful decreases and (b) the EXACT
+   * "seconds till available" NiceHash returns on a rejected decrease - the
+   * latter also captures a MANUAL operator edit that reset NiceHash's timer
+   * without the daemon seeing it. Gates the daemon's own decreases so it stops
+   * hammering the API, and feeds the remaining-seconds shown in Next Action.
+   */
+  private nicehashDecreaseCooldownUntilMs: number | null = null;
+
+  /**
+   * #dual-provider: last NiceHash order price we observed (sat/PH/day), so we
+   * can DETECT a decrease between ticks - by anyone, including a MANUAL operator
+   * edit - and start the cooldown clock from that observation. This is what
+   * makes the Next Action cooldown appear even when the daemon itself never
+   * attempted a decrease (NiceHash only reveals the exact seconds on a rejected
+   * attempt). After our own decrease we baseline this to the submitted price so
+   * the daemon's own edit isn't re-counted as a fresh drop next tick.
+   */
+  private nicehashLastPriceSatPerPhDay: number | null = null;
+
+  /**
    * #287 follow-up: the order id of a BID_PAUSED we have emitted and
    * not yet matched with a BID_RESUMED. A resume only emits when this
    * matches the current order - so a pause that began during downtime
@@ -127,6 +158,12 @@ export class Controller {
     if (!row) return;
     this.belowFloorSince = row.below_floor_since_ms;
     this.aboveFloorTicks = row.above_floor_ticks;
+    // #dual-provider: resume the persisted active provider so a restart while
+    // NiceHash was active doesn't default to BRAIINS and place a throwaway
+    // Braiins bid (which then can't be cancelled during its grace period).
+    if (row.active_provider === 'NICEHASH' || row.active_provider === 'BRAIINS') {
+      this.activeProvider = row.active_provider;
+    }
   }
 
   async tick(): Promise<TickResult> {
@@ -252,6 +289,8 @@ export class Controller {
       lower_ready_since_ms: null,
       below_target_since_ms: null,
       above_floor_ticks: this.aboveFloorTicks,
+      // #dual-provider: persist the active provider so a restart resumes it.
+      active_provider: this.activeProvider,
     });
 
     // Metrics snapshot - one row per tick, used by the Hashrate chart.
@@ -410,6 +449,10 @@ export class Controller {
       reason: evald.selection.reason,
       nicehashAction: null,
       nicehashOrder: null,
+      nicehashDecreaseCooldownSecondsLeft: nicehashCooldownSecondsLeft(
+        this.nicehashDecreaseCooldownUntilMs,
+        state.tick_at,
+      ),
     };
 
     if (evald.selection.switched) {
@@ -480,9 +523,15 @@ export class Controller {
             orderId: snapshot.orderId,
             currentPriceSatPerPhDay: snapshot.currentPriceSatPerPhDay,
             remainingBtc: snapshot.remainingBtc,
-            // NiceHash enforces the 10-min decrease cooldown server-side, so a
-            // too-soon decrease is simply rejected and logged - we don't track it.
-            lastDecreaseAtMs: null,
+            // We DO track the decrease cooldown now: derive a synthetic
+            // last-decrease time from the cooldown-until we learned (from a
+            // NiceHash rejection or our own decrease). This holds the daemon's
+            // decreases until the cooldown clears instead of hammering the API,
+            // and stays in sync with a manual operator edit.
+            lastDecreaseAtMs:
+              this.nicehashDecreaseCooldownUntilMs !== null
+                ? this.nicehashDecreaseCooldownUntilMs - NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS
+                : null,
           },
           refillThresholdBtc: cfg.nicehash_refill_threshold_btc,
           refillAmountBtc: cfg.nicehash_refill_amount_btc,
@@ -509,7 +558,7 @@ export class Controller {
           marketFactor: book.marketFactor,
           displayMarketFactor: book.displayMarketFactor,
         };
-        await executeNicehash(
+        const nhResults = await executeNicehash(
           svc,
           actions,
           state.run_mode,
@@ -517,6 +566,77 @@ export class Controller {
           cfg.nicehash_target_hashrate_ph,
           snapshot.limitPh,
         );
+
+        // Learn / refresh the decrease cooldown so we stop hammering NiceHash
+        // and respect manual operator edits. Three sources, in order of trust:
+        //   1. DETECTED price drop between ticks (by anyone - manual or daemon):
+        //      the price just fell, so a fresh 10-min window starts now. This is
+        //      what makes the cooldown show without a failed attempt.
+        //   2. Our own just-executed decrease -> a fresh full 10-min window.
+        //   3. EXACT "seconds till available" on a rejected decrease -> the
+        //      authoritative remaining time; it overrides the estimate.
+        let cooldownUntil = this.nicehashDecreaseCooldownUntilMs;
+
+        // (1) Detect a drop vs the last observed price. The daemon's own decrease
+        // is excluded below (we baseline lastPrice to the submitted price), so a
+        // drop detected here is a manual edit or a market re-price we didn't do.
+        const prevPrice = this.nicehashLastPriceSatPerPhDay;
+        const curPrice = snapshot.currentPriceSatPerPhDay;
+        const priceDropped =
+          prevPrice !== null && curPrice !== null && curPrice < prevPrice - 1e-6;
+        if (priceDropped) {
+          cooldownUntil = Math.max(
+            cooldownUntil ?? 0,
+            state.tick_at + NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS,
+          );
+        }
+
+        // (2) Our own executed decrease also starts a fresh window.
+        const ourDecreasePrices = actions
+          .filter(
+            (a) =>
+              (a.kind === 'EDIT_PRICE' || a.kind === 'PARK') &&
+              a.submitPriceSatPerPhDay !== undefined &&
+              curPrice !== null &&
+              a.submitPriceSatPerPhDay < curPrice,
+          )
+          .map((a) => a.submitPriceSatPerPhDay!);
+        const executedDecrease =
+          state.run_mode === 'LIVE' &&
+          ourDecreasePrices.length > 0 &&
+          nhResults.some(
+            (r) => (r.kind === 'EDIT_PRICE' || r.kind === 'PARK') && r.outcome === 'EXECUTED',
+          );
+        if (executedDecrease) {
+          cooldownUntil = Math.max(
+            cooldownUntil ?? 0,
+            state.tick_at + NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS,
+          );
+        }
+
+        // (3) Exact remaining from a rejection overrides the estimate.
+        for (const r of nhResults) {
+          if (r.cooldownSecondsLeft !== undefined) {
+            cooldownUntil = state.tick_at + r.cooldownSecondsLeft * 1000;
+          }
+        }
+        this.nicehashDecreaseCooldownUntilMs = cooldownUntil ?? null;
+
+        // Baseline the last-seen price for next tick's drop detection. After our
+        // own executed decrease, use the submitted price so we don't re-detect
+        // the daemon's own edit as a fresh manual drop next tick.
+        this.nicehashLastPriceSatPerPhDay = executedDecrease
+          ? Math.min(...ourDecreasePrices)
+          : curPrice;
+        if (this.lastProviderEvaluation) {
+          this.lastProviderEvaluation = {
+            ...this.lastProviderEvaluation,
+            nicehashDecreaseCooldownSecondsLeft: nicehashCooldownSecondsLeft(
+              cooldownUntil ?? null,
+              state.tick_at,
+            ),
+          };
+        }
       } catch (err) {
         console.warn(`[nicehash] order maintenance failed (non-fatal): ${(err as Error).message}`);
       }
@@ -531,4 +651,15 @@ export class Controller {
   getProviderEvaluation(): ProviderEvaluationSnapshot | null {
     return this.lastProviderEvaluation;
   }
+}
+
+/**
+ * Remaining whole seconds on the NiceHash decrease cooldown, or null when the
+ * cooldown is unknown or already elapsed. Kept tiny + pure so both the initial
+ * snapshot and the post-execute refresh compute it the same way.
+ */
+function nicehashCooldownSecondsLeft(untilMs: number | null, nowMs: number): number | null {
+  if (untilMs === null) return null;
+  const secs = Math.ceil((untilMs - nowMs) / 1000);
+  return secs > 0 ? secs : null;
 }

@@ -22,6 +22,8 @@ export interface RuntimeStateRow {
   lower_ready_since_ms: number | null;
   below_target_since_ms: number | null;
   above_floor_ticks: number;
+  /** #dual-provider: persisted active provider so a restart resumes it. */
+  active_provider: string | null;
   solo_best_difficulty_all_time: number | null;
   last_backfilled_payout_address: string | null;
 }
@@ -57,6 +59,7 @@ export class RuntimeStateRepo {
         lower_ready_since_ms: null,
         below_target_since_ms: null,
         above_floor_ticks: 0,
+        active_provider: null,
         solo_best_difficulty_all_time: null,
         last_backfilled_payout_address: null,
       })
@@ -86,6 +89,7 @@ function toDomain(row: RuntimeStateTable): RuntimeStateRow {
     lower_ready_since_ms: row.lower_ready_since_ms,
     below_target_since_ms: row.below_target_since_ms,
     above_floor_ticks: row.above_floor_ticks,
+    active_provider: row.active_provider ?? null,
     solo_best_difficulty_all_time: row.solo_best_difficulty_all_time ?? null,
     last_backfilled_payout_address: row.last_backfilled_payout_address ?? null,
   };

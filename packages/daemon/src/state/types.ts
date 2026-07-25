@@ -174,6 +174,12 @@ export interface RuntimeStateTable {
   /** @deprecated Kept as nullable column; escalation logic removed. */
   below_target_since_ms: number | null;
   above_floor_ticks: number;
+  /**
+   * #dual-provider: last active provider ('BRAIINS' | 'NICEHASH'), persisted so
+   * a restart resumes it instead of defaulting to BRAIINS (and placing a
+   * throwaway Braiins bid). null on legacy rows -> falls back to BRAIINS.
+   */
+  active_provider: string | null;
   /** #204: fleet-wide all-time best difficulty high-water mark. */
   solo_best_difficulty_all_time: number | null;
   /**

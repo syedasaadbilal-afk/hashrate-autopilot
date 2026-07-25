@@ -12,6 +12,7 @@
  * partial mutation self-corrects next tick.
  */
 
+import { parseNicehashDecreaseCooldownSeconds } from '@hashrate-autopilot/nicehash-client';
 import type { RunMode } from '@hashrate-autopilot/shared';
 
 import type { NicehashOrderAction } from './decide-nicehash.js';
@@ -21,6 +22,13 @@ export interface ExecuteNicehashResult {
   readonly kind: NicehashOrderAction['kind'];
   readonly outcome: 'DRY_RUN' | 'EXECUTED' | 'FAILED' | 'SKIPPED';
   readonly note: string;
+  /**
+   * When NiceHash rejected a price DECREASE because its 10-min cooldown hasn't
+   * elapsed, the exact seconds it reports as remaining ("Seconds till
+   * available: N"). The controller uses this to gate its own decreases so it
+   * stops hammering the API and stays in sync with manual operator edits.
+   */
+  readonly cooldownSecondsLeft?: number;
 }
 
 export async function executeNicehash(
@@ -95,7 +103,16 @@ export async function executeNicehash(
       const body = (err as { body?: unknown }).body;
       const detail = body !== undefined ? ` body=${JSON.stringify(body)}` : '';
       console.warn(`[nicehash] LIVE ${a.kind} FAILED: ${msg}${detail}`);
-      results.push({ kind: a.kind, outcome: 'FAILED', note: `${msg}${detail}` });
+      // If it's the decrease-cooldown rejection, capture the EXACT seconds
+      // NiceHash reports so the controller can hold future decreases precisely
+      // (and pick up a manual operator edit that reset NiceHash's timer).
+      const cooldownSecondsLeft = parseNicehashDecreaseCooldownSeconds(body);
+      results.push({
+        kind: a.kind,
+        outcome: 'FAILED',
+        note: `${msg}${detail}`,
+        ...(cooldownSecondsLeft !== null ? { cooldownSecondsLeft } : {}),
+      });
     }
   }
 

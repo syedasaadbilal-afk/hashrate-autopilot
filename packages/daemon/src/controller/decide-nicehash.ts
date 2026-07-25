@@ -24,11 +24,13 @@
  * the fee here).
  *
  * Price edits - park included - go through `evaluateNicehashPriceEdit`, so
- * they obey the 200 sat/PH/day decrease step + 10-min decrease cooldown
- * (increases are free). A parking decrease can therefore be delayed up to the
- * cooldown; until it lands the order keeps filling at its old price. That
- * window is bounded and the provider switch itself is already gated by the
- * sustained window.
+ * they obey NiceHash's per-edit decrease CAP (max ~200 sat/PH/day per edit;
+ * a bigger drop 5063s "price change is too big") plus the 10-min decrease
+ * cooldown (increases are free and instant). A decrease toward a distant
+ * target therefore lands one cap-sized step at a time over successive
+ * cooldown windows; until it converges the order keeps filling at the
+ * higher price. That window is bounded and the provider switch itself is
+ * already gated by the sustained window.
  *
  * Pure and side-effect free: returns an ordered list of actions the executor
  * carries out (REFILL and EDIT_PRICE can both fire on one tick). In DRY-RUN

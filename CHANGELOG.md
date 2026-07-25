@@ -1,10 +1,22 @@
 # Changelog
 
-## 2026-07-23
+## 2026-07-25
 
-### `[Release]` v1.17.4
+### `[Release]` v1.18.9
 
-Stability + docs patch since v1.17.3. The headline fix reaches users here: the daemon no longer crash-loops when the Electrum connection drops mid-session (v1.17.3 still had that bug). Also removes a misleading "Telegram 2FA tap required" note from bid creation - the autopilot bids via Braiins' API with the owner token, which needs no Telegram confirmation - and adds a user-facing FAQ covering setup, payouts, bidding, and requirements.
+NiceHash price-tracking fix. The daemon could not lower a NiceHash order's price at all - every attempt was rejected by NiceHash with error 5063 "Order price change is too big" - so an order left overpriced as the fill line dropped just kept spending. This release fixes the decrease logic, respects NiceHash's exact cooldown, and surfaces that cooldown in the Next Action card. Also folds in the persisted active-provider fix (a restart while NiceHash was active no longer places a throwaway Braiins bid).
+
+### `[Fix]` NiceHash price decreases no longer rejected as "too big" (error 5063)
+
+NiceHash caps how far an order's price can be lowered in a single edit (about 200 sat/PH/day == 0.002 BTC/EH/day for this SHA-256 market), and rejects anything larger. The daemon treated that 200 figure as a *minimum* step and snapped each decrease UP to the largest whole multiple at or above the target - so tracking a fill line several hundred sat below the order produced one oversized drop (600, 800, or more) that NiceHash refused every tick, leaving the price stuck. The decrease logic is inverted to the correct semantics: take at most one cap-sized step toward the target per edit and walk the price down over successive cooldown windows. Increases remain instant and unrestricted.
+
+### `[Fix]` NiceHash decrease cooldown is read exactly from NiceHash and shown in Next Action
+
+NiceHash allows one price decrease per 10 minutes and, on a too-soon attempt, reports the precise seconds remaining ("Seconds till available: N") - the only place that number is exposed, since the order object carries no last-change timestamp. The daemon now parses that value to gate its own decreases (so it stops retrying blindly) and, crucially, to stay in sync when the *operator* lowers the price manually, which resets NiceHash's server-side timer. The remaining cooldown is displayed in the dashboard's Next Action card so you can see exactly when the next lower can land.
+
+### `[Fix]` Active provider persists across a restart
+
+A restart while NiceHash was the active provider reset the in-memory selection to Braiins, which placed a throwaway Braiins bid on the first tick that then couldn't be cancelled during Braiins' creation grace period - briefly running both providers. The active provider is now persisted (migration 0123) and resumed on boot, so a restart picks up on NiceHash with no stray Braiins bid.
 
 ## 2026-07-19
 
