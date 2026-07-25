@@ -2184,6 +2184,10 @@ msgstr "fees"
 msgid "Fetches the BTC/USD spot price from a public exchange API. Enables a sats/USD denomination toggle in the dashboard header. No API key required - uses unauthenticated public endpoints."
 msgstr "Fetches the BTC/USD spot price from a public exchange API. Enables a sats/USD denomination toggle in the dashboard header. No API key required - uses unauthenticated public endpoints."
 
+#: src/pages/Status.tsx
+msgid "fill line"
+msgstr "fill line"
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx

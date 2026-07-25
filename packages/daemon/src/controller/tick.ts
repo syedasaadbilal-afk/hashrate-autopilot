@@ -47,6 +47,13 @@ export interface ProviderEvaluationSnapshot {
   readonly activeProvider: Provider;
   readonly braiinsEffectiveSatPerPhDay: number | null;
   readonly nicehashEffectiveSatPerPhDay: number | null;
+  /**
+   * NiceHash fill line BEFORE overpay, sat/PH/day - the depth-aware cheapest
+   * price whose real supply covers our target. Exposed so the dashboard can
+   * show fill line / target / order price together and the operator can
+   * reconcile against the NiceHash order book. null when unpriceable.
+   */
+  readonly nicehashFillLineSatPerPhDay: number | null;
   readonly braiinsCostSatPerPhDay: number | null;
   readonly nicehashCostSatPerPhDay: number | null;
   readonly nicehashAdvantagePct: number | null;
@@ -434,6 +441,9 @@ export class Controller {
       nicehashOrders: book?.orders ?? null,
       nicehashMarketFactor: book?.marketFactor ?? null,
       nicehashMinDeliveredPh: cfg.nicehash_min_delivered_ph,
+      // Depth-aware fill line: anchor to where enough supply exists to fill our
+      // whole target, not to a cheap order catching only a trickle.
+      nicehashTargetPh: cfg.nicehash_target_hashrate_ph,
       overpaySatPerPhDay: cfg.overpay_sat_per_eh_day / 1000,
       braiinsFeePct: cfg.braiins_fee_pct,
       nicehashFeePct: cfg.nicehash_fee_pct,
@@ -472,6 +482,7 @@ export class Controller {
       activeProvider: seededProvider,
       braiinsEffectiveSatPerPhDay: evald.braiinsEffectiveSatPerPhDay,
       nicehashEffectiveSatPerPhDay: evald.nicehashEffectiveSatPerPhDay,
+      nicehashFillLineSatPerPhDay: evald.nicehashFillLineSatPerPhDay,
       braiinsCostSatPerPhDay: evald.braiinsCostSatPerPhDay,
       nicehashCostSatPerPhDay: evald.nicehashCostSatPerPhDay,
       nicehashAdvantagePct: evald.selection.nicehashAdvantagePct,

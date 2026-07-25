@@ -853,6 +853,7 @@ export interface ProviderEvaluation {
   activeProvider: 'BRAIINS' | 'NICEHASH';
   braiinsEffectiveSatPerPhDay: number | null;
   nicehashEffectiveSatPerPhDay: number | null;
+  nicehashFillLineSatPerPhDay?: number | null;
   braiinsCostSatPerPhDay: number | null;
   nicehashCostSatPerPhDay: number | null;
   nicehashAdvantagePct: number | null;

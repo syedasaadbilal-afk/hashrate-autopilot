@@ -220,6 +220,11 @@ function ProviderPanel() {
           <div className="text-sm text-slate-200 tabular-nums">
             {fmtPrice(p.nicehashEffectiveSatPerPhDay)}
           </div>
+          {p.nicehashFillLineSatPerPhDay != null && (
+            <div className="text-[11px] text-slate-500 tabular-nums mt-0.5">
+              <Trans>fill line</Trans> {fmtPrice(p.nicehashFillLineSatPerPhDay)}
+            </div>
+          )}
         </div>
         <div className="bg-slate-950 border border-slate-800 rounded p-3">
           <div className="text-[11px] text-slate-500 mb-1">

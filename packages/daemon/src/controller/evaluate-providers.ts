@@ -23,6 +23,7 @@
  */
 
 import {
+  cheapestFillableForDepth,
   desiredBidAboveFillable,
   lowestFillingPrice,
   type NiceHashOrderBookOrder,
@@ -48,6 +49,17 @@ export interface EvaluateProvidersInputs {
   readonly nicehashMarket?: string;
   /** Dust floor (PH/s) for the NiceHash fill line - orders delivering at/below this don't set the line. Default 0. */
   readonly nicehashMinDeliveredPh?: number;
+  /**
+   * Our NiceHash target hashrate (PH/s). When > 0 the fill line is DEPTH-AWARE:
+   * the cheapest price whose cumulative delivered supply (from the bottom of the
+   * book up) covers this target - i.e. where enough real supply exists to fill
+   * OUR order, not just the cheapest order catching a trickle. This is what stops
+   * the daemon anchoring to a low-priced order receiving only scraps (e.g. a
+   * 0.4801 order getting 1.3 PH/s while the real 1.4 EH/s supply sits at 0.4820),
+   * which left the order priced below the true fill line and delivering nothing.
+   * When 0/unset, falls back to `lowestFillingPrice` (cheapest order with any fill).
+   */
+  readonly nicehashTargetPh?: number;
 
   /** Shared overpay cushion, sat/PH/day (config.overpay_sat_per_eh_day ÷ 1000). */
   readonly overpaySatPerPhDay: number;
@@ -113,9 +125,17 @@ export function evaluateProviders(inputs: EvaluateProvidersInputs): EvaluateProv
     inputs.nicehashMarketFactor > 0
   ) {
     const orders = filterByMarket(inputs.nicehashOrders, inputs.nicehashMarket);
-    const fillLine = lowestFillingPrice(orders, inputs.nicehashMarketFactor, {
-      minDeliveredPh: inputs.nicehashMinDeliveredPh ?? 0,
-    });
+    // Depth-aware anchor when we know our target: the cheapest price whose
+    // cumulative delivered supply covers our order, so we bid where real supply
+    // is (not to a cheaper order catching only a trickle). Falls back to the
+    // cheapest-any-fill rule when no target is known.
+    const targetPh = inputs.nicehashTargetPh ?? 0;
+    const fillLine =
+      targetPh > 0
+        ? cheapestFillableForDepth(orders, targetPh, inputs.nicehashMarketFactor)
+        : lowestFillingPrice(orders, inputs.nicehashMarketFactor, {
+            minDeliveredPh: inputs.nicehashMinDeliveredPh ?? 0,
+          });
     if (fillLine.priceSatPerPhDay !== null) {
       nicehashFillLineSatPerPhDay = fillLine.priceSatPerPhDay;
       nicehashEffectiveSatPerPhDay = desiredBidAboveFillable(

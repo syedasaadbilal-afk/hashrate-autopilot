@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-07-25 (consolidated NiceHash fixes)
+
+### `[Release]` v1.18.12
+
+Consolidated build folding the fill-line hotfix together with a refill-threshold fix, a dust-floor default, and a fill-line readout on the Provider panel. Supersedes the un-deployed 1.18.11.
+
+### `[Fix]` Refill threshold now uses spendable (fee-adjusted) remaining
+
+The refill decision compared the order's remaining against the threshold, but computed remaining from the gross `amount` (0.002 BTC) minus spend, rather than the fee-adjusted `availableAmount` (what's actually spendable, ~7k sats less). So the daemon's remaining read ~7,000 sats higher than NiceHash's own "remaining", the threshold never tripped, and top-ups didn't fire while the order quietly drained. Remaining is now `availableAmount - payedAmount`, matching NiceHash's UI, so refills fire at the configured threshold.
+
+### `[Improvement]` Provider panel shows the raw fill line
+
+The "NiceHash price" tile now also shows the underlying fill line (before overpay), so the fill line / target / order price can be reconciled against the NiceHash order book at a glance.
+
+### `[Improvement]` Dust-floor default raised to 0.1 PH/s
+
+`nicehash_min_delivered_ph` now defaults to 0.1 (was 0) so a tiny trickle order can't anchor the fill line below where real supply sits. (Phantom orders with zero miners are ignored regardless.)
+
+## 2026-07-25 (fill-line hotfix, folded into 1.18.12)
+
+### `[Release]` v1.18.11
+
+Hotfix: the NiceHash order could sit priced below the real fill line and deliver nothing. Root cause was the fill-line anchor - it picked the cheapest order receiving ANY hashrate, even when that order was only catching a trickle while the real supply sat at a higher price.
+
+### `[Fix]` Depth-aware NiceHash fill line (no more stranded orders)
+
+The daemon anchored the NiceHash bid to `lowestFillingPrice` - the cheapest order in the book receiving any hashrate above the dust floor. On the live book that was a cheap order catching only a trickle, while the actual ~1.4 EH/s of supply sat higher at 0.4820. So the daemon targeted too low and the order, priced below the true fill line, delivered 0.00 PH/s. Raising the dust floor didn't help because the trickle was above it. The fill line is now DEPTH-AWARE: it anchors to the cheapest price whose cumulative delivered supply (from the bottom of the book up) covers our target hashrate - i.e. where enough real supply exists to fill our whole order - so the daemon prices to actually deliver. Falls back to the old cheapest-any-fill rule only when no target is configured.
+
+### `[Fix]` Refill now fires at the configured threshold (remaining was over-stated)
+
+The daemon computed a NiceHash order's remaining budget as `amount - payedAmount`, using the GROSS order size. NiceHash deducts its fee up front, so the spendable budget is `availableAmount` (amount minus the ~3% setup/refill fee), and its own UI shows remaining = `availableAmount - payedAmount`. The daemon therefore read remaining ~7,000 sats too high and never crossed the refill threshold - e.g. it saw 0.00035 remaining (above a 0.0003 threshold) while the real remaining was 0.00028 (below it), so the top-up never fired. Remaining is now computed from `availableAmount`, matching NiceHash, so refills trigger exactly at the configured threshold. (Operators should also set the NiceHash fee % in config - typically 3 - so the ~3% marketplace fee is folded into the provider-switch comparison; the submitted bid is unchanged.)
+
+### `[Fix]` Phantom orders (speed with zero miners) no longer set the fill line
+
+The live order book routinely lists cheap orders showing an `acceptedSpeed` while having ZERO assigned miners (`rigsCount = 0`) - stale/settling entries that aren't actually receiving hashrate. The daemon counted their reported speed as real supply, which anchored the fill line to a price that delivers nothing. Orders with no miners are now treated as delivering zero, so only genuinely-served supply sets the fill line. Combined with the depth-aware anchor, the daemon prices against the real market instead of the cheapest phantom entry.
+
 ## 2026-07-25 (later)
 
 ### `[Release]` v1.18.10

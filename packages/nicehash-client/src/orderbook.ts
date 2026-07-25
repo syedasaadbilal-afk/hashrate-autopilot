@@ -120,9 +120,18 @@ function parseOrders(
     // `acceptedSpeed` is in marketFactor units (same unit as limitSpeed);
     // convert to PH/s. Absent/zero acceptedSpeed = not filling = 0 grabbable.
     const acceptedUnits = Number(o.acceptedSpeed ?? 0);
-    const deliveredPh = Number.isFinite(acceptedUnits)
+    let deliveredPh = Number.isFinite(acceptedUnits)
       ? (Math.max(0, acceptedUnits) * marketFactor) / H_PER_PH
       : 0;
+    // Phantom-order guard: the live book routinely reports an acceptedSpeed for
+    // an order with ZERO assigned miners (rigsCount === 0) - a stale/settling
+    // entry that is NOT actually receiving hashrate. Left in, such an order
+    // anchors the fill line to a cheap price that delivers nothing (observed on
+    // the live book: several 0.4800-0.4810 orders showing Speed > 0 with 0
+    // miners while the real supply sat at 0.4820 with 51k miners). Treat an
+    // order with no miners as delivering nothing so it can't set the fill line.
+    // When rigsCount is absent (older book shape) we fall back to acceptedSpeed.
+    if (o.rigsCount !== undefined && o.rigsCount <= 0) deliveredPh = 0;
     out.push({ priceBtc, deliveredPh });
   }
   return out;

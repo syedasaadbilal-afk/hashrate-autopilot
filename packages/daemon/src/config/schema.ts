@@ -585,8 +585,13 @@ export const AppConfigSchema = z.object({
   provider_switch_threshold_pct: z.number().nonnegative().default(3.25),
   /** Challenger must hold its edge this many minutes before an actual switch. */
   provider_switch_sustained_window_minutes: nonNegativeInt.default(10),
-  /** Dust floor (PH/s) for the NiceHash fill line. 0 = literal confirmed rule. */
-  nicehash_min_delivered_ph: z.number().nonnegative().default(0),
+  /**
+   * Dust floor (PH/s) for the NiceHash fill line. Orders delivering at/below
+   * this don't set the line. Default 0.1 so a small trickle order can't anchor
+   * us below where real supply sits. (Phantom orders with 0 miners are already
+   * ignored regardless.) 0 = literal "any fill" rule.
+   */
+  nicehash_min_delivered_ph: z.number().nonnegative().default(0.1),
   /** Braiins fee % folded into the switch comparison (0 during beta). */
   braiins_fee_pct: z.number().nonnegative().default(0),
   /** NiceHash marketplace fee % folded into the switch comparison. */
@@ -750,7 +755,7 @@ export const APP_CONFIG_DEFAULTS: Omit<
   nicehash_pool_id: '',
   provider_switch_threshold_pct: 3.25,
   provider_switch_sustained_window_minutes: 10,
-  nicehash_min_delivered_ph: 0,
+  nicehash_min_delivered_ph: 0.1,
   braiins_fee_pct: 0,
   nicehash_fee_pct: 0,
   nicehash_target_hashrate_ph: 1,

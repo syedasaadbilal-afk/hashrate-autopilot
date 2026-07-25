@@ -161,6 +161,19 @@ describe('lowestFillingPrice (confirmed rule)', () => {
     const bid = desiredBidAboveFillable(line.priceSatPerPhDay!, 100, MF);
     expect(bid.priceSatPerPhDay).toBeCloseTo(48_460, 2); // fill line + 100 sat/PH/day
   });
+
+  it('ignores a phantom order: speed reported but ZERO miners (rigsCount 0)', () => {
+    // Live-book shape: cheap orders showing acceptedSpeed but no assigned rigs,
+    // while the real supply (with miners) sits dearer. The fill line must be the
+    // real order's price, not the phantom cheap one.
+    const orders: NiceHashOrderBookOrder[] = [
+      { id: 'phantom', price: (4.8e-7).toString(), acceptedSpeed: '50', rigsCount: 0 },
+      { id: 'real', price: (4.82e-7).toString(), acceptedSpeed: '1000', rigsCount: 51_625 },
+    ];
+    expect(lowestFillingPrice(orders, MF).priceSatPerPhDay).toBeCloseTo(48_200, 1);
+    // Depth-aware anchor agrees: phantom supply doesn't count toward the target.
+    expect(cheapestFillableForDepth(orders, 1, MF).priceSatPerPhDay).toBeCloseTo(48_200, 1);
+  });
 });
 
 describe('desiredBidAboveFillable', () => {

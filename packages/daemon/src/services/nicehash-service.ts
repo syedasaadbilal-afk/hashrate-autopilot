@@ -190,8 +190,17 @@ export class NiceHashService {
       }
       const priceBtc = Number(order.price);
       const amount = Number(order.amount ?? 0);
+      // `availableAmount` is the SPENDABLE budget - `amount` minus NiceHash's
+      // creation fee. The order runs until payedAmount reaches availableAmount,
+      // and NiceHash's own UI shows remaining = availableAmount - payedAmount.
+      // Using `amount` here over-stated remaining by the fee (~7k sats), so the
+      // refill threshold never tripped and top-ups didn't fire. Prefer
+      // availableAmount; fall back to amount only if it's missing.
+      const availableRaw = Number((order as Record<string, unknown>)['availableAmount']);
+      const available = Number.isFinite(availableRaw) && availableRaw > 0 ? availableRaw : amount;
       const payed = Number(order.payedAmount ?? 0);
-      const remainingBtc = Number.isFinite(amount) && Number.isFinite(payed) ? amount - payed : null;
+      const remainingBtc =
+        Number.isFinite(available) && Number.isFinite(payed) ? available - payed : null;
       const priceSat = Number.isFinite(priceBtc) ? priceToSatPerPhDay(priceBtc, marketFactor) : null;
       // NiceHash reports speed/limit in the display unit (EH for SHA256 BTC);
       // ×1000 converts EH→PH. Defensive Number() parse; null if not present.

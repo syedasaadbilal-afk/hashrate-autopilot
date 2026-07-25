@@ -42,6 +42,42 @@ describe('evaluateProviders', () => {
     expect(r.selection.preferredByPrice).toBe('BRAIINS');
   });
 
+  it('DEPTH-AWARE fill line: skips a cheap order catching only a trickle, anchors to real supply', () => {
+    // Live-book shape that stranded the order: a cheap 48,000 order receiving
+    // only 1.3 PH/s while the real 1,416 PH/s supply sits at 48,200. With a
+    // 1.5 PH/s target the fill line must be 48,200 (where enough supply exists
+    // to fill us), NOT 48,000 (a trickle that can't cover our order).
+    const r = evaluateProviders({
+      braiinsFillableSatPerEhDay: 55_000_000, // keep Braiins clearly dearer
+      nicehashOrders: [
+        order(4.8e-7, 1_300), // 48,000 sat/PH/day, delivering 1.3 PH/s (trickle)
+        order(4.82e-7, 1_416_000), // 48,200 sat/PH/day, delivering ~1,416 PH/s (real supply)
+      ],
+      nicehashMarketFactor: MF,
+      nicehashTargetPh: 1.5,
+      overpaySatPerPhDay: 100,
+      switchConfig: SWITCH,
+      prevProviderState: ON_BRAIINS,
+      now: T0,
+    });
+    expect(r.nicehashFillLineSatPerPhDay).toBeCloseTo(48_200, 1);
+    expect(r.nicehashEffectiveSatPerPhDay).toBeCloseTo(48_300, 1);
+  });
+
+  it('without a target, falls back to the cheapest-any-fill anchor', () => {
+    const r = evaluateProviders({
+      braiinsFillableSatPerEhDay: 55_000_000,
+      nicehashOrders: [order(4.8e-7, 1_300), order(4.82e-7, 1_416_000)],
+      nicehashMarketFactor: MF,
+      // no nicehashTargetPh
+      overpaySatPerPhDay: 100,
+      switchConfig: SWITCH,
+      prevProviderState: ON_BRAIINS,
+      now: T0,
+    });
+    expect(r.nicehashFillLineSatPerPhDay).toBeCloseTo(48_000, 1);
+  });
+
   it('prefers NiceHash when its effective price is >3.25% below Braiins', () => {
     // Braiins fillable 50,000,000 sat/EH/day = 50,000 sat/PH/day; +100 = 50,100.
     // NiceHash fill line 4.8e-7 = 48,000; +100 = 48,100. Advantage ~4.0%.
