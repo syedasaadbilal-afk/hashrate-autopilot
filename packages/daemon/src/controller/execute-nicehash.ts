@@ -36,11 +36,15 @@ export async function executeNicehash(
   actions: readonly NicehashOrderAction[],
   runMode: RunMode,
   params: NiceHashLiveParams,
-  targetPh: number,
-  // The live order's current speed limit (PH/s), or null if unknown/no order.
-  // Price edits must never send a limit below this - NiceHash 400s on a limit
-  // decrease. Only used for EDIT_PRICE / PARK on an existing order.
-  currentOrderLimitPh: number | null,
+  // The speed limit (PH/s) to set on CREATE and every EDIT. Normally the config
+  // target (nicehash_target_hashrate_ph); the caller may pass a THROTTLED value
+  // (e.g. 1 PH during a dislocation, #56) and restore it on normalisation.
+  // NiceHash ACCEPTS limit decreases (confirmed live 2026-07-26: 2 PH -> 1 PH),
+  // so we set the limit to what we actually want - the old "echo current limit
+  // because NiceHash 400s a decrease" workaround was wrong (those 400s were the
+  // price cap 5063 / decimals 2997, never the limit). Floor is 1 PH in 1 PH
+  // steps; the caller keeps it whole and >= 1.
+  desiredLimitPh: number,
 ): Promise<ExecuteNicehashResult[]> {
   const results: ExecuteNicehashResult[] = [];
 
@@ -63,7 +67,7 @@ export async function executeNicehash(
           const id = await svc.createOrder(
             params,
             a.submitPriceSatPerPhDay!,
-            targetPh,
+            desiredLimitPh,
             a.amountBtc!,
           );
           console.info(`[nicehash] LIVE CREATE ok id=${id}: ${a.reason}`);
@@ -78,13 +82,11 @@ export async function executeNicehash(
         }
         case 'EDIT_PRICE':
         case 'PARK': {
-          // Edits cover PRICE only - the speed limit is set at CREATE from
-          // config (nicehash_target_hashrate_ph) and left untouched here. We
-          // must still resend a limit (updatePriceAndLimit requires it), so we
-          // echo the order's CURRENT limit unchanged - never the config target
-          // if that's lower, since NiceHash 400s a limit decrease.
-          const editLimitPh = currentOrderLimitPh ?? targetPh;
-          await svc.editOrderPrice(params, a.orderId!, a.submitPriceSatPerPhDay!, editLimitPh);
+          // updatePriceAndLimit requires a limit; we set it to the desired limit
+          // (config target, or a throttled value from the caller). Limit
+          // decreases are accepted, so this also converges the order to the
+          // configured target if it was created larger.
+          await svc.editOrderPrice(params, a.orderId!, a.submitPriceSatPerPhDay!, desiredLimitPh);
           console.info(`[nicehash] LIVE ${a.kind} ok id=${a.orderId}: ${a.reason}`);
           results.push({ kind: a.kind, outcome: 'EXECUTED', note: `${a.kind} ${a.orderId}` });
           break;

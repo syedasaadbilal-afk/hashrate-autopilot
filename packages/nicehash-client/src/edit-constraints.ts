@@ -142,7 +142,12 @@ export function evaluateNicehashPriceEdit(
     };
   }
 
-  // INCREASE - unrestricted.
+  // INCREASE - unrestricted. NiceHash allows increases anytime, and we need
+  // them fast for REACTIVATION (raising a parked order back above the fill line)
+  // and to keep filling when the fill line rises. Over-climbing is prevented by
+  // the DEEP-LIQUIDITY CAP on the desired price (evaluate-providers), not by a
+  // per-edit step cap - capping the step here would make re-entry take ~140 min
+  // and wouldn't stop a slow climb of many sub-cap steps anyway.
   if (delta > 0) {
     return {
       allowed: true,

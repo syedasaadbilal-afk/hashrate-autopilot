@@ -9,12 +9,12 @@ const T0 = 1_000_000_000_000;
 const MIN = 60_000;
 
 describe('evaluateNicehashPriceEdit - increases', () => {
-  it('allows any increase regardless of cooldown or cap', () => {
+  it('allows any increase in one edit (unrestricted; needed for reactivation)', () => {
     const r = evaluateNicehashPriceEdit({
       currentPriceSatPerPhDay: 48_000,
-      desiredPriceSatPerPhDay: 48_600, // +600, above the 200 cap - still fine
-      lastDecreaseAtMs: T0, // just decreased - would block a decrease
-      now: T0 + 1000, // inside cooldown
+      desiredPriceSatPerPhDay: 48_600, // +600, straight to target
+      lastDecreaseAtMs: T0, // just decreased - does NOT block an increase
+      now: T0 + 1000, // inside the decrease cooldown - irrelevant for increases
       constraints: {},
     });
     expect(r.allowed).toBe(true);
