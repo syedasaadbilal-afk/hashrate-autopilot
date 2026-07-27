@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.18.0"
+version: "1.18.13"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,6 +53,25 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.18.13 - dual-provider intelligence: rationing supplement, honest switch price, blended accounting, Timeline + parked-state UI.
+
+  NEW
+  - Braiins supplement when NiceHash is rationed: when the NiceHash book has no deep block of supply (cumulative supply below the new "deep-liquidity threshold", default 1 EH/s), the autopilot stops chasing the price up into thin scraps, throttles the NiceHash order to 1 PH, and un-parks Braiins at its target so the two run in parallel for ~2 PH total. When the market normalises it parks Braiins first, then restores NiceHash to its full target - it never leaves NiceHash stuck at the throttled 1 PH.
+  - Deep-liquidity cap (never pay for scraps): NiceHash is never bid above the price where a real, sizeable block of supply exists.
+  - Timeline now shows NiceHash order events (create / edit / park / cancel) alongside Braiins, each tagged with a "NiceHash" badge. The Braiins price-chart marker overlay stays Braiins-only.
+  - NiceHash target hashrate now sits next to the Braiins target under Hashrate targets, plus a configurable deep-liquidity threshold.
+
+  IMPROVED
+  - Switch decision uses NiceHash's ACTUAL deliverable price: the daemon compares on max(current order price, desired) so it won't park Braiins on a cheaper price the NiceHash order hasn't actually reached yet (its capped/cooled-down decreases lag the target), and a parked order can't look artificially cheap and cause a flap.
+  - UPTIME, AVG COST DELIVERED and VS HASHPRICE now count BOTH providers. Uptime credits whichever venue delivered; cost/hashprice blend the real settlement counters from Braiins and NiceHash (fee-inclusive), weighted by each venue's delivered EH-days. With NiceHash idle the figures are unchanged.
+  - Hero PRICE follows the active provider (shows the live NiceHash order price when NiceHash is active instead of the parked Braiins bid), and parked Braiins bids are labelled "parked" in the BIDS panel.
+
+  FIXED
+  - Braiins rejection-ratio chart no longer freezes at an absurd value (e.g. ~33%): a measurement now requires a minimum number of cleared shares, so a handful of shares between counter syncs can't produce a wild ratio that then carries forward.
+
+  NOTE
+  - Two smaller reporting items are deferred to a later build: a separate NiceHash-delivered line on the Hashrate chart, and an Ocean-derived effective-rejection figure for NiceHash. The NiceHash delivered speed is already shown numerically (AVG NICEHASH tile + provider card + provider-aware hero).
+
   v1.18.0 - NiceHash dual-provider evaluation (DRY-RUN / observe-only).
 
   NEW

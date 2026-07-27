@@ -267,6 +267,8 @@ export interface BidEventView {
   occurred_at: number;
   source: 'AUTOPILOT' | 'OPERATOR';
   kind: 'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED';
+  /** #52: venue this event belongs to. Absent/legacy rows are BRAIINS. */
+  provider?: 'BRAIINS' | 'NICEHASH';
   braiins_order_id: string | null;
   old_price_sat_per_ph_day: number | null;
   new_price_sat_per_ph_day: number | null;
@@ -552,6 +554,7 @@ export interface AppConfig {
   provider_switch_threshold_pct: number;
   provider_switch_sustained_window_minutes: number;
   nicehash_min_delivered_ph: number;
+  nicehash_deep_liquidity_eh: number;
   braiins_fee_pct: number;
   nicehash_fee_pct: number;
   nicehash_target_hashrate_ph: number;

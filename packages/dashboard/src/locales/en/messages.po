@@ -1128,6 +1128,10 @@ msgid "Braiins share-rejection ratio over the selected chart range. Same figure 
 msgstr "Braiins share-rejection ratio over the selected chart range. Same figure as the \"rejection ratio\" row in the Braiins panel below. Computed server-side from the first and last cumulative counter samples in the range."
 
 #: src/pages/Config.tsx
+msgid "Braiins target hashrate"
+msgstr "Braiins target hashrate"
+
+#: src/pages/Config.tsx
 msgid "Braiins's marketplace fees are currently zero (beta). These two knobs pre-arm the autopilot for the day that changes: an automatic halt when fees exceed your comfort level, and a configurable edit deadband to keep the bid-adjustment count down."
 msgstr "Braiins's marketplace fees are currently zero (beta). These two knobs pre-arm the autopilot for the day that changes: an automatic halt when fees exceed your comfort level, and a configurable edit deadband to keep the bid-adjustment count down."
 
@@ -2475,8 +2479,12 @@ msgid "How much BTC to add on each refill."
 msgstr "How much BTC to add on each refill."
 
 #: src/pages/Config.tsx
-msgid "How much hashrate to rent on the NiceHash order."
-msgstr "How much hashrate to rent on the NiceHash order."
+msgid "How much hashrate to buy on Braiins when it's the active provider."
+msgstr "How much hashrate to buy on Braiins when it's the active provider."
+
+#: src/pages/Config.tsx
+msgid "How much hashrate to rent on the NiceHash order when it's the active provider. Whole PH ≥ 1 (NiceHash's minimum order size)."
+msgstr "How much hashrate to rent on the NiceHash order when it's the active provider. Whole PH ≥ 1 (NiceHash's minimum order size)."
 
 #: src/pages/Config.tsx
 msgid "How numbers and dates render in this browser. Month names follow the UI language picker (top-right). Saved locally - every operator can pick their own."
@@ -3089,6 +3097,10 @@ msgstr "NiceHash algorithm enum. For the Bitcoin market this is SHA256ASICBOOST 
 msgid "NiceHash currency market key. For SHA256AsicBoost this is BTC."
 msgstr "NiceHash currency market key. For SHA256AsicBoost this is BTC."
 
+#: src/pages/Config.tsx
+msgid "NiceHash deep-liquidity threshold"
+msgstr "NiceHash deep-liquidity threshold"
+
 #: src/pages/Status.tsx
 msgid "NiceHash evaluation not running (enable it in Config)."
 msgstr "NiceHash evaluation not running (enable it in Config)."
@@ -3120,6 +3132,10 @@ msgstr "NiceHash must be strictly more than this percent cheaper than Braiins (f
 #: src/pages/Status.tsx
 msgid "NiceHash order"
 msgstr "NiceHash order"
+
+#: src/pages/Status.tsx
+msgid "NiceHash order · active"
+msgstr "NiceHash order · active"
 
 #: src/pages/Config.tsx
 msgid "NiceHash order budget"
@@ -3634,6 +3650,10 @@ msgstr "paid earnings (lifetime)"
 #: src/pages/Config.tsx
 msgid "Park margin"
 msgstr "Park margin"
+
+#: src/pages/Status.tsx
+msgid "parked"
+msgstr "parked"
 
 #: src/pages/Login.tsx
 msgid "password"
@@ -4463,6 +4483,10 @@ msgstr "sent · check Telegram"
 msgid "Set NiceHash API keys"
 msgstr "Set NiceHash API keys"
 
+#: src/pages/Config.tsx
+msgid "Set this in \"Hashrate targets\" (next to the Braiins target). Repeated here for context."
+msgstr "Set this in \"Hashrate targets\" (next to the Braiins target). Repeated here for context."
+
 #: src/pages/Setup.tsx
 msgid "Setting up…"
 msgstr "Setting up…"
@@ -4690,7 +4714,6 @@ msgstr "Target"
 msgid "Target (PH/s)"
 msgstr "Target (PH/s)"
 
-#: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "Target hashrate"
 msgstr "Target hashrate"
@@ -5147,6 +5170,10 @@ msgstr "When our bid drops below the break-even hashprice from Ocean, scale up t
 #: src/pages/Config.tsx
 msgid "When the bid is cheap (below the hashprice threshold), scale up to this target instead of the normal one."
 msgstr "When the bid is cheap (below the hashprice threshold), scale up to this target instead of the normal one."
+
+#: src/pages/Config.tsx
+msgid "When the NiceHash book has no block of at least this much cumulative supply, the market is treated as RATIONED: the autopilot stops chasing the price up into thin scraps, holds the price, and lets Braiins supplement the shortfall (NiceHash throttled to 1 PH + Braiins un-parked). Default 1 EH/s."
+msgstr "When the NiceHash book has no block of at least this much cumulative supply, the market is treated as RATIONED: the autopilot stops chasing the price up into thin scraps, holds the price, and lets Braiins supplement the shortfall (NiceHash throttled to 1 PH + Braiins un-parked). Default 1 EH/s."
 
 #: src/pages/Config.tsx
 msgid "Where rented hashrate lands. Change only if your pool endpoint moves. The BTC payout address sits here too - the worker identity below is auto-derived from it whenever you edit the address, same as the first-run wizard."

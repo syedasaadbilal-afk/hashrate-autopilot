@@ -1128,6 +1128,10 @@ msgid "Braiins share-rejection ratio over the selected chart range. Same figure 
 msgstr "Braiins share-afwijzingsratio over het geselecteerde bereik. Zelfde getal als de \"rejection ratio\" rij in het Braiins-paneel hieronder. Server-side berekend uit de eerste en laatste cumulatieve teller-monsters in het bereik."
 
 #: src/pages/Config.tsx
+msgid "Braiins target hashrate"
+msgstr ""
+
+#: src/pages/Config.tsx
 msgid "Braiins's marketplace fees are currently zero (beta). These two knobs pre-arm the autopilot for the day that changes: an automatic halt when fees exceed your comfort level, and a configurable edit deadband to keep the bid-adjustment count down."
 msgstr "Braiins-marktplaatsfees zijn momenteel nul (beta). Deze twee knoppen wapenen de autopilot voor de dag dat dit verandert: een automatische stop wanneer fees boven je comfortniveau uitkomen, en een configureerbare edit-deadband om het aantal bid-aanpassingen laag te houden."
 
@@ -2475,7 +2479,11 @@ msgid "How much BTC to add on each refill."
 msgstr ""
 
 #: src/pages/Config.tsx
-msgid "How much hashrate to rent on the NiceHash order."
+msgid "How much hashrate to buy on Braiins when it's the active provider."
+msgstr ""
+
+#: src/pages/Config.tsx
+msgid "How much hashrate to rent on the NiceHash order when it's the active provider. Whole PH ≥ 1 (NiceHash's minimum order size)."
 msgstr ""
 
 #: src/pages/Config.tsx
@@ -3089,6 +3097,10 @@ msgstr ""
 msgid "NiceHash currency market key. For SHA256AsicBoost this is BTC."
 msgstr ""
 
+#: src/pages/Config.tsx
+msgid "NiceHash deep-liquidity threshold"
+msgstr ""
+
 #: src/pages/Status.tsx
 msgid "NiceHash evaluation not running (enable it in Config)."
 msgstr ""
@@ -3119,6 +3131,10 @@ msgstr ""
 
 #: src/pages/Status.tsx
 msgid "NiceHash order"
+msgstr ""
+
+#: src/pages/Status.tsx
+msgid "NiceHash order · active"
 msgstr ""
 
 #: src/pages/Config.tsx
@@ -3633,6 +3649,10 @@ msgstr "uitbetaald (totaal)"
 
 #: src/pages/Config.tsx
 msgid "Park margin"
+msgstr ""
+
+#: src/pages/Status.tsx
+msgid "parked"
 msgstr ""
 
 #: src/pages/Login.tsx
@@ -4463,6 +4483,10 @@ msgstr "verzonden · check Telegram"
 msgid "Set NiceHash API keys"
 msgstr ""
 
+#: src/pages/Config.tsx
+msgid "Set this in \"Hashrate targets\" (next to the Braiins target). Repeated here for context."
+msgstr ""
+
 #: src/pages/Setup.tsx
 msgid "Setting up…"
 msgstr "Bezig met instellen…"
@@ -4690,7 +4714,6 @@ msgstr "Doel"
 msgid "Target (PH/s)"
 msgstr "Doel (PH/s)"
 
-#: src/pages/Config.tsx
 #: src/pages/Setup.tsx
 msgid "Target hashrate"
 msgstr "Doel-hashrate"
@@ -5147,6 +5170,10 @@ msgstr "Wanneer ons bod onder de break-even hashprice van Ocean zakt, schalen we
 #: src/pages/Config.tsx
 msgid "When the bid is cheap (below the hashprice threshold), scale up to this target instead of the normal one."
 msgstr "Wanneer het bod goedkoop is (onder de hashprice-drempel), schaal op naar dit doel in plaats van het normale doel."
+
+#: src/pages/Config.tsx
+msgid "When the NiceHash book has no block of at least this much cumulative supply, the market is treated as RATIONED: the autopilot stops chasing the price up into thin scraps, holds the price, and lets Braiins supplement the shortfall (NiceHash throttled to 1 PH + Braiins un-parked). Default 1 EH/s."
+msgstr ""
 
 #: src/pages/Config.tsx
 msgid "Where rented hashrate lands. Change only if your pool endpoint moves. The BTC payout address sits here too - the worker identity below is auto-derived from it whenever you edit the address, same as the first-run wizard."

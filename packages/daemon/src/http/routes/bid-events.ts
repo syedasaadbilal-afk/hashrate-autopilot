@@ -30,6 +30,17 @@ import type { HttpServerDeps } from '../server.js';
 const EH_PER_PH = 1000;
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * #52: the price-CHART marker overlay is the Braiins market series, so it
+ * stays Braiins-only - NiceHash order/price events surface in the History
+ * Timeline (flat endpoint) instead, where they're labelled by venue. This
+ * keeps NiceHash markers from cluttering the Braiins price chart. Legacy
+ * rows have no provider -> treated as BRAIINS.
+ */
+function isBraiinsRow(r: { provider?: 'BRAIINS' | 'NICEHASH' }): boolean {
+  return (r.provider ?? 'BRAIINS') === 'BRAIINS';
+}
+
 /** #287 follow-up: kinds that render as chart markers at EVERY zoom
  *  level, like pool blocks - rare, high-signal, and often the
  *  explanation for a gap you only notice when zoomed out. */
@@ -40,6 +51,8 @@ export interface BidEventView {
   readonly occurred_at: number;
   readonly source: 'AUTOPILOT' | 'OPERATOR';
   readonly kind: 'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED';
+  /** #52: which venue the event belongs to. 'BRAIINS' on legacy rows. */
+  readonly provider: 'BRAIINS' | 'NICEHASH';
   readonly braiins_order_id: string | null;
   readonly old_price_sat_per_ph_day: number | null;
   readonly new_price_sat_per_ph_day: number | null;
@@ -93,13 +106,15 @@ export async function registerBidEventsRoute(
         // exists to tame EDIT_PRICE noise.
         const allowedKinds = new Set([...kinds, ...ALWAYS_VISIBLE_KINDS]);
         const rows = await deps.bidEventsRepo.listSince(parsedSince, parsedUntil);
-        return { events: rows.filter((r) => allowedKinds.has(r.kind)).map(toView) };
+        return {
+          events: rows.filter((r) => allowedKinds.has(r.kind) && isBraiinsRow(r)).map(toView),
+        };
       }
 
       // Legacy: ?since=<ms> alone forces the classic raw lookup.
       if (!req.query.range && Number.isFinite(parsedSince) && parsedSince > 0) {
         const rows = await deps.bidEventsRepo.listSince(parsedSince);
-        return { events: rows.map(toView) };
+        return { events: rows.filter(isBraiinsRow).map(toView) };
       }
 
       const range = parseChartRange(req.query.range) ?? DEFAULT_CHART_RANGE;
@@ -117,7 +132,7 @@ export async function registerBidEventsRoute(
         await deps.bidEventsRepo.listSince(
           sinceMs === 0 ? 0 : Math.max(0, sinceMs),
         )
-      ).filter((r) => allowedKinds.has(r.kind));
+      ).filter((r) => allowedKinds.has(r.kind) && isBraiinsRow(r));
 
       // Legacy default window (24 h) if someone calls /api/bid-events
       // with no params at all - unchanged behaviour.
@@ -294,6 +309,7 @@ function toView(r: {
   occurred_at: number;
   source: 'AUTOPILOT' | 'OPERATOR';
   kind: 'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED';
+  provider?: 'BRAIINS' | 'NICEHASH';
   braiins_order_id: string | null;
   old_price_sat: number | null;
   new_price_sat: number | null;
@@ -308,6 +324,8 @@ function toView(r: {
     occurred_at: r.occurred_at,
     source: r.source,
     kind: r.kind,
+    // Legacy rows predate the column; default to BRAIINS.
+    provider: r.provider ?? 'BRAIINS',
     braiins_order_id: r.braiins_order_id,
     old_price_sat_per_ph_day:
       r.old_price_sat !== null ? r.old_price_sat / EH_PER_PH : null,

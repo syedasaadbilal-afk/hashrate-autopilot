@@ -1905,6 +1905,13 @@ function EventRow({
       <td className="py-1 px-3 whitespace-nowrap">
         <ActionGlyph kind={event.kind} />
         <span className="ml-1.5 text-slate-200">{labels[event.kind]}</span>
+        {/* #52: mark NiceHash-venue events so the operator can tell them
+            apart from Braiins in the merged Timeline at a glance. */}
+        {event.provider === 'NICEHASH' && (
+          <span className="ml-1.5 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-300 align-middle">
+            NiceHash
+          </span>
+        )}
       </td>
       <td className="py-1 px-3 font-mono text-slate-300 whitespace-nowrap">
         {bidId}

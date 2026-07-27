@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { NiceHashOrderBookOrder, NiceHashOrderBookResponse } from './client.js';
 import {
   cheapestFillableForDepth,
+  deepLiquidityPrice,
   desiredBidAboveFillable,
   extractMarketBook,
   lowestFillingPrice,
@@ -173,6 +174,38 @@ describe('lowestFillingPrice (confirmed rule)', () => {
     expect(lowestFillingPrice(orders, MF).priceSatPerPhDay).toBeCloseTo(48_200, 1);
     // Depth-aware anchor agrees: phantom supply doesn't count toward the target.
     expect(cheapestFillableForDepth(orders, 1, MF).priceSatPerPhDay).toBeCloseTo(48_200, 1);
+  });
+});
+
+describe('deepLiquidityPrice (#55 rationing detector)', () => {
+  it('returns the cheapest price whose cumulative delivered supply reaches the deep threshold', () => {
+    // threshold 1 PH: 0.5 + 0.8 = 1.3 PH cumulative at the 45,000 order.
+    const orders = [
+      order(4.0e-7, 500), // 0.5 PH -> cum 0.5
+      order(4.5e-7, 800), // 0.8 PH -> cum 1.3 covers 1 PH
+      order(4.9e-7, 2000), // deeper, not needed
+    ];
+    expect(deepLiquidityPrice(orders, 1, MF)).toBeCloseTo(45_000, 1);
+  });
+
+  it('returns null (rationed) when the whole book never reaches the threshold', () => {
+    // total delivered = 0.5 + 0.4 = 0.9 PH < 1 PH threshold -> no deep block.
+    const orders = [order(4.0e-7, 500), order(4.5e-7, 400)];
+    expect(deepLiquidityPrice(orders, 1, MF)).toBeNull();
+  });
+
+  it('ignores phantom orders (0 delivered) when accumulating depth', () => {
+    const orders = [
+      order(4.0e-7, 0), // phantom - contributes nothing
+      order(4.5e-7, 300), // 0.3 PH
+      order(4.9e-7, 300), // 0.3 PH -> cum 0.6 < 1 PH -> rationed
+    ];
+    expect(deepLiquidityPrice(orders, 1, MF)).toBeNull();
+  });
+
+  it('returns null for an empty book or non-positive threshold', () => {
+    expect(deepLiquidityPrice([], 1, MF)).toBeNull();
+    expect(deepLiquidityPrice([order(4.5e-7, 5000)], 0, MF)).toBeNull();
   });
 });
 

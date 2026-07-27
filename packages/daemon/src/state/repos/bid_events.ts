@@ -12,6 +12,7 @@ import type { Kysely } from 'kysely';
 
 import type {
   BidEventKind,
+  BidEventProvider,
   BidEventSource,
   Database,
 } from '../types.js';
@@ -20,6 +21,12 @@ export interface BidEventInsert {
   occurred_at: number;
   source: BidEventSource;
   kind: BidEventKind;
+  /**
+   * #52: venue this event belongs to. Optional on insert - omitted rows fall
+   * to the DB default 'BRAIINS' (migration 0125), so the Braiins path is
+   * unchanged; the NiceHash path passes 'NICEHASH' explicitly.
+   */
+  provider?: BidEventProvider;
   braiins_order_id: string | null;
   old_price_sat: number | null;
   new_price_sat: number | null;
@@ -34,6 +41,8 @@ export interface BidEventInsert {
 
 export interface BidEventRow extends BidEventInsert {
   id: number;
+  /** Always present on read (defaulted by the DB); 'BRAIINS' on legacy rows. */
+  provider: BidEventProvider;
 }
 
 export class BidEventsRepo {

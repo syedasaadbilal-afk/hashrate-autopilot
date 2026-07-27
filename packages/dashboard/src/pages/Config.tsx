@@ -139,7 +139,23 @@ function useSections(): Section[] {
         title: t`Hashrate targets`,
         description: t`Where the autopilot aims, and the floor below which it starts escalating.`,
         fields: [
-          { key: 'target_hashrate_ph', label: t`Target hashrate`, kind: 'decimal', unit: 'PH/s' },
+          {
+            key: 'target_hashrate_ph',
+            label: t`Braiins target hashrate`,
+            kind: 'decimal',
+            unit: 'PH/s',
+            help: t`How much hashrate to buy on Braiins when it's the active provider.`,
+          },
+          // #62: surface the NiceHash target right next to the Braiins target so
+          // the two venues' sizing is comparable at a glance. (The full NiceHash
+          // settings live in the Dual-provider section below.)
+          {
+            key: 'nicehash_target_hashrate_ph',
+            label: t`NiceHash target hashrate`,
+            kind: 'decimal',
+            unit: 'PH/s',
+            help: t`How much hashrate to rent on the NiceHash order when it's the active provider. Whole PH ≥ 1 (NiceHash's minimum order size).`,
+          },
           { key: 'minimum_floor_hashrate_ph', label: t`Minimum floor`, kind: 'decimal', unit: 'PH/s' },
         ],
       },
@@ -218,11 +234,21 @@ function useSections(): Section[] {
             help: t`NiceHash marketplace fee, folded into the comparison the same way.`,
           },
           {
+            // #62: the NiceHash target now lives next to the Braiins target in
+            // "Hashrate targets" above; shown here read-only as a cross-reference.
             key: 'nicehash_target_hashrate_ph',
             label: t`NiceHash target hashrate`,
             kind: 'decimal',
             unit: 'PH/s',
-            help: t`How much hashrate to rent on the NiceHash order.`,
+            help: t`Set this in "Hashrate targets" (next to the Braiins target). Repeated here for context.`,
+          },
+          {
+            // #55: never bid above the price where a real block of supply exists.
+            key: 'nicehash_deep_liquidity_eh',
+            label: t`NiceHash deep-liquidity threshold`,
+            kind: 'decimal',
+            unit: 'EH/s',
+            help: t`When the NiceHash book has no block of at least this much cumulative supply, the market is treated as RATIONED: the autopilot stops chasing the price up into thin scraps, holds the price, and lets Braiins supplement the shortfall (NiceHash throttled to 1 PH + Braiins un-parked). Default 1 EH/s.`,
           },
           {
             key: 'nicehash_create_amount_btc',

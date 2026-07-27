@@ -1092,14 +1092,22 @@ export const HashrateChart = memo(function HashrateChart({
               values[i] = null;
               continue;
             }
-            if (dp === 0) {
-              // No fresh activity since the previous point. Hold
-              // the last known rate. Don't advance prevIdx - wait
-              // until Δp > 0 so we get a meaningful measurement.
+            // #51: require a MINIMUM cleared-share delta before emitting a
+            // measurement. A Δp of just a few shares makes dr/dp wildly
+            // unstable (1 reject / 3 cleared = 33%), and because that value is
+            // then carried forward it visually "sticks" at an absurd rate until
+            // the next batch sync - the operator saw the line frozen at ~33%
+            // when the true rate was ~0.97%. Holding (without advancing prevIdx)
+            // until Δp is large enough lets the interval accumulate into a
+            // statistically meaningful sample, then emits a stable rate.
+            const MIN_CLEARED_SHARES = 100;
+            if (dp < MIN_CLEARED_SHARES) {
+              // Not enough cleared shares yet for a trustworthy ratio. Hold the
+              // last value and keep prevIdx pinned so the window grows.
               values[i] = lastKnown;
               continue;
             }
-            // New measurement: Δp > 0. Compute, save, advance.
+            // New measurement: Δp is meaningful. Compute, save, advance.
             lastKnown = (dr / dp) * 100;
             values[i] = lastKnown;
             prevIdx = i;

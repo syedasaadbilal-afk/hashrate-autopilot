@@ -110,6 +110,14 @@ export interface DecideNicehashInputs {
    * When omitted/0 we fall back to always raising (legacy behaviour).
    */
   readonly overpaySatPerPhDay?: number;
+  /**
+   * #55: the NiceHash book is RATIONED this tick (no deep-liquidity block). When
+   * true we do NOT raise the price - chasing a rising fill line into thin scraps
+   * only burns the 10-min lockout and pays more for hashrate that isn't there.
+   * The order keeps delivering whatever it fills at its current price and Braiins
+   * supplements the shortfall (#56). DECREASES and REFILLS are unaffected.
+   */
+  readonly rationed?: boolean;
 }
 
 export interface NicehashOrderAction {
@@ -225,7 +233,9 @@ export function decideNicehash(inputs: DecideNicehashInputs): readonly NicehashO
     if (current - desired >= decreaseDeadband) {
       shouldEdit = true;
     } else if (current < desired) {
-      shouldEdit = overpay <= 0 || current <= fillLine;
+      // #55: never chase the price UP while the market is rationed - the extra
+      // supply isn't there, so a raise just burns the lockout and overpays.
+      shouldEdit = !inputs.rationed && (overpay <= 0 || current <= fillLine);
     }
 
     if (shouldEdit) {

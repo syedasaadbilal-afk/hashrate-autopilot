@@ -154,9 +154,38 @@ describe('decideNicehash - price tracking obeys NiceHash step/cooldown', () => {
     expect(actions.some((a) => a.kind === 'EDIT_PRICE')).toBe(false);
   });
 
+  it('#55: does NOT raise while the market is rationed, even at/below the fill line', () => {
+    // Same setup as the RAISES case (order at the fill line), but rationed=true:
+    // the extra supply isn't there, so we hold the price and let Braiins supplement
+    // rather than chase up into scraps and burn the 10-min lockout.
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 48_100,
+      overpaySatPerPhDay: 200,
+      rationed: true,
+      order: liveOrder({ currentPriceSatPerPhDay: 47_850, remainingBtc: 0.01 }),
+    });
+    expect(actions.some((a) => a.kind === 'EDIT_PRICE')).toBe(false);
+  });
+
+  it('#55: still DECREASES when rationed (only increases are gated)', () => {
+    // Overpaying by >= the deadband: a decrease is fine while rationed.
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 47_800, // want -200 (== deadband)
+      rationed: true,
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    const edit = actions.find((a) => a.kind === 'EDIT_PRICE')!;
+    expect(edit.submitPriceSatPerPhDay).toBe(47_800);
+  });
+
   it('RAISES straight to desired once the order falls to the fill line', () => {
     // Same target/overpay; now the order has drifted down to 47,850 <= fill line
-    // 47,900 (about to stop delivering), so we jump back to desired (48,100).
+    // 47,900 (about to stop delivering), so it jumps straight back to desired
+    // (48,100). Increases are unrestricted (fast reactivation / re-entry).
     const actions = decideNicehash({
       ...BASE,
       providerActive: true,

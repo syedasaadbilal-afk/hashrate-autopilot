@@ -82,6 +82,11 @@ export interface InsertTickMetricArgs {
   readonly primary_bid_shares_rejected_m: number | null;
   readonly run_mode: TickMetricsTable['run_mode'];
   readonly action_mode: TickMetricsTable['action_mode'];
+  /** #48/#49/#51: dual-provider attribution (one tick behind). All nullable so
+   *  the Braiins-only path can omit them and legacy rows read NULL. */
+  readonly active_provider?: string | null;
+  readonly nicehash_delivered_ph?: number | null;
+  readonly nicehash_consumed_sat?: number | null;
 }
 
 export type TickMetricRow = Selectable<TickMetricsTable>;

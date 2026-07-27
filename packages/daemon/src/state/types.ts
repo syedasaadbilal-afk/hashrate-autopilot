@@ -146,6 +146,7 @@ export interface ConfigTable {
   provider_switch_threshold_pct: number;
   provider_switch_sustained_window_minutes: number;
   nicehash_min_delivered_ph: number;
+  nicehash_deep_liquidity_eh: number;
   braiins_fee_pct: number;
   nicehash_fee_pct: number;
   nicehash_target_hashrate_ph: number;
@@ -388,12 +389,20 @@ export interface FeeScheduleCacheTable {
 
 export type BidEventSource = 'AUTOPILOT' | 'OPERATOR';
 export type BidEventKind = 'CREATE_BID' | 'EDIT_PRICE' | 'EDIT_SPEED' | 'CANCEL_BID' | 'MODE_CHANGE' | 'BID_PAUSED' | 'BID_RESUMED';
+/**
+ * #52: which venue the event belongs to. Historically bid_events was
+ * Braiins-only; NiceHash order/price events now land here too so the
+ * Timeline reflects both. Existing rows default to BRAIINS (migration 0125).
+ */
+export type BidEventProvider = 'BRAIINS' | 'NICEHASH';
 
 export interface BidEventsTable {
   id: Generated<number>;
   occurred_at: number;
   source: BidEventSource;
   kind: BidEventKind;
+  /** #52: BRAIINS (default) or NICEHASH. Braiins inserts omit it -> default. */
+  provider: Generated<BidEventProvider>;
   braiins_order_id: string | null;
   old_price_sat: number | null;
   new_price_sat: number | null;
@@ -550,6 +559,20 @@ export interface TickMetricsTable {
    * predating it carry the default 0.
    */
   synthetic: Generated<number>;
+  /**
+   * #48/#49/#51: which marketplace was active this tick ('BRAIINS' | 'NICEHASH'),
+   * one tick behind. Lets the tuning stats attribute delivery/spend to the right
+   * venue. NULL on rows predating migration 0126.
+   */
+  active_provider: string | null;
+  /** #49: NiceHash order's accepted/delivered speed this tick, PH/s. NULL pre-0126. */
+  nicehash_delivered_ph: number | null;
+  /**
+   * #48: NiceHash order's cumulative spend (payedAmount) this tick, sat. Per-tick
+   * deltas give the authoritative NiceHash spend, mirroring
+   * primary_bid_consumed_sat on the Braiins side. NULL pre-0126.
+   */
+  nicehash_consumed_sat: number | null;
 }
 
 // ---------------------------------------------------------------------------

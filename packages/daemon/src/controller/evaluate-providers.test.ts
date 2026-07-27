@@ -165,6 +165,71 @@ describe('evaluateProviders', () => {
     expect(r.nicehashCostSatPerPhDay).toBe(r.nicehashEffectiveSatPerPhDay);
   });
 
+  it('#55: flags rationed when the book lacks a deep-liquidity block', () => {
+    // Total delivered supply 0.5 + 0.3 = 0.8 PH < 1 EH deep threshold -> rationed.
+    const r = evaluateProviders({
+      braiinsFillableSatPerEhDay: 50_000_000,
+      nicehashOrders: [order(4.8e-7, 500), order(4.9e-7, 300)],
+      nicehashMarketFactor: MF,
+      nicehashDeepLiquidityEh: 1,
+      overpaySatPerPhDay: 100,
+      switchConfig: SWITCH,
+      prevProviderState: ON_BRAIINS,
+      now: T0,
+    });
+    expect(r.nicehashRationed).toBe(true);
+  });
+
+  it('#55: not rationed when a deep block covers the threshold', () => {
+    const r = evaluateProviders({
+      braiinsFillableSatPerEhDay: 50_000_000,
+      nicehashOrders: [order(4.8e-7, 2_000_000)], // 2000 PH delivered = 2 EH
+      nicehashMarketFactor: MF,
+      nicehashDeepLiquidityEh: 1,
+      overpaySatPerPhDay: 100,
+      switchConfig: SWITCH,
+      prevProviderState: ON_BRAIINS,
+      now: T0,
+    });
+    expect(r.nicehashRationed).toBe(false);
+  });
+
+  it('#60: switch cost uses max(current order price, effective) on the way down', () => {
+    // Effective NiceHash = 48,100. But the live order is still priced high at
+    // 60,000 (capped decreases lag the target). The switch basis must be 60,000
+    // (the actual deliverable price), NOT the cheaper desired 48,100 - so Braiins
+    // isn't parked before NiceHash's price has genuinely converged.
+    const r = evaluateProviders({
+      braiinsFillableSatPerEhDay: 50_000_000, // Braiins 50,100
+      nicehashOrders: [order(4.8e-7, 5000)], // effective 48,100
+      nicehashMarketFactor: MF,
+      overpaySatPerPhDay: 100,
+      nicehashCurrentOrderPriceSatPerPhDay: 60_000,
+      switchConfig: { switchThresholdPct: 3.25, sustainedWindowMinutes: 0 },
+      prevProviderState: ON_BRAIINS,
+      now: T0,
+    });
+    expect(r.nicehashSwitchBasisSatPerPhDay).toBeCloseTo(60_000, 1);
+    // At 60,000 NiceHash is DEARER than Braiins 50,100 -> stays on Braiins.
+    expect(r.selection.preferredByPrice).toBe('BRAIINS');
+  });
+
+  it('#60: a parked order (price far below fill) uses effective, not its parked price', () => {
+    // Parked live price 10,000 (below fill) must NOT make NiceHash look cheap and
+    // flap the active provider; max(10,000, effective 48,100) = 48,100.
+    const r = evaluateProviders({
+      braiinsFillableSatPerEhDay: 50_000_000,
+      nicehashOrders: [order(4.8e-7, 5000)],
+      nicehashMarketFactor: MF,
+      overpaySatPerPhDay: 100,
+      nicehashCurrentOrderPriceSatPerPhDay: 10_000,
+      switchConfig: SWITCH,
+      prevProviderState: ON_BRAIINS,
+      now: T0,
+    });
+    expect(r.nicehashSwitchBasisSatPerPhDay).toBeCloseTo(48_100, 1);
+  });
+
   it('nulls the Braiins side when fillable is unavailable', () => {
     const r = evaluateProviders({
       braiinsFillableSatPerEhDay: null,

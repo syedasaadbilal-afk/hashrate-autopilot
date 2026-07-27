@@ -98,8 +98,11 @@ export function decide(state: State): readonly Proposal[] {
   // reserved for hard stops (Datum-down above, teardown). Guarded on
   // `active_provider` (absent = 'BRAIINS'), so single-provider behaviour is
   // byte-for-byte unchanged.
+  // #56: when NiceHash is active but rationed, Braiins runs as a concurrent
+  // supplement - so do NOT park it in that mode. Fall through to normal Braiins
+  // bid maintenance so it stays live at its target and tops up the shortfall.
   const activeProvider = state.active_provider ?? 'BRAIINS';
-  if (activeProvider !== 'BRAIINS') {
+  if (activeProvider !== 'BRAIINS' && !state.nicehash_supplement_active) {
     const parkable = state.owned_bids.filter((b) => !isPendingCancel(b));
     if (parkable.length === 0) return [];
     // Need the fill line to price the park. Without a market snapshot, hold -

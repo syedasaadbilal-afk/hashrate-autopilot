@@ -224,6 +224,35 @@ export function cheapestFillableForDepth(
   return toResult(lastDeliveringPriceBtc, marketFactor, true, cumulative);
 }
 
+/**
+ * Deep-liquidity price: the cheapest price whose CUMULATIVE delivered supply
+ * (from the bottom of the book up) reaches `thresholdPh` - i.e. where a sizeable
+ * block of real hashrate sits. Returns `null` when the whole book's delivered
+ * supply never reaches the threshold (the market is rationed / thin - no deep
+ * block to anchor to).
+ *
+ * The operator's rule (2026-07-26): never chase NiceHash above the price where
+ * sizeable hashrate (~1 EH) is available. So the daemon uses this two ways:
+ *   - as a RATIONING signal: null => thin market => don't chase the price up
+ *     (hold), and let Braiins supplement the shortfall.
+ *   - `thresholdPh` is a config knob (nicehash_deep_liquidity_eh x 1000).
+ */
+export function deepLiquidityPrice(
+  orders: readonly NiceHashOrderBookOrder[] | undefined,
+  thresholdPh: number,
+  marketFactor: number,
+): number | null {
+  if (!orders || orders.length === 0 || thresholdPh <= 0) return null;
+  const parsed = parseOrders(orders, marketFactor).sort((a, b) => a.priceBtc - b.priceBtc);
+  let cumulative = 0;
+  for (const o of parsed) {
+    if (o.deliveredPh <= 0) continue;
+    cumulative += o.deliveredPh;
+    if (cumulative >= thresholdPh) return priceToSatPerPhDay(o.priceBtc, marketFactor);
+  }
+  return null; // book never reaches the threshold -> no deep block (rationed)
+}
+
 function toResult(
   priceBtc: number,
   marketFactor: number,

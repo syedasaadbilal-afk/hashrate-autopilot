@@ -119,6 +119,12 @@ export interface ObserveInputs {
    * so floor / zero-hashrate alerts stay correct. null = treat as 0.
    */
   readonly nicehashDeliveredPh?: number | null;
+  /**
+   * #56: NiceHash is active but rationed, so Braiins runs as a concurrent
+   * supplement this tick - decide() must NOT park the Braiins bid. One tick
+   * behind, mirroring activeProvider. Absent = false.
+   */
+  readonly nicehashSupplementActive?: boolean;
 }
 
 /**
@@ -611,6 +617,7 @@ export async function observe(deps: ObserveDeps, inputs: ObserveInputs): Promise
     cheap_mode_window,
     bypass_pacing: inputs.bypassPacing,
     active_provider: inputs.activeProvider ?? 'BRAIINS',
+    nicehash_supplement_active: inputs.nicehashSupplementActive ?? false,
   };
 }
 

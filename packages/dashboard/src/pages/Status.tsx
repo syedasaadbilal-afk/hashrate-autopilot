@@ -1086,7 +1086,23 @@ export function Status() {
         <div className="lg:col-span-2 h-full">
           <OperationsCard
             s={s}
-            currentBidPH={primaryBidPricePH(s)}
+            // #58: the hero PRICE follows the ACTIVE provider. When NiceHash is
+            // active the Braiins bid is parked below the fill line, so its price
+            // is meaningless as "what we're paying" - show the live NiceHash
+            // order price instead. Falls back to the Braiins owned-bid price when
+            // Braiins is active (or NiceHash has no priced order yet).
+            currentBidPH={
+              providerQuery.data?.activeProvider === 'NICEHASH' &&
+              nicehashOrder?.priceSatPerPhDay != null
+                ? nicehashOrder.priceSatPerPhDay
+                : primaryBidPricePH(s)
+            }
+            priceProvider={
+              providerQuery.data?.activeProvider === 'NICEHASH' &&
+              nicehashOrder?.priceSatPerPhDay != null
+                ? 'NICEHASH'
+                : 'BRAIINS'
+            }
             hashpricePH={financeQuery.data?.ocean?.hashprice_sat_per_ph_day ?? null}
             onRunMode={(m) => runModeMutation.mutate(m)}
             runModePending={runModeMutation.isPending}
@@ -1564,7 +1580,18 @@ export function Status() {
                   </tr>
                 </thead>
                 <tbody>
-                  {s.bids.map((b) => (
+                  {s.bids.map((b) => {
+                    // #58: a Braiins bid whose price sits below the current fill
+                    // line is PARKED (dropped below fillable to idle at zero cost
+                    // while NiceHash carries the load) - not a live delivering bid.
+                    // Surface it explicitly so the operator isn't misled by an
+                    // "active" Braiins status while NiceHash is the venue.
+                    const parked =
+                      b.is_owned &&
+                      s.market?.fillable_ask_sat_per_ph_day != null &&
+                      b.price_sat_per_ph_day != null &&
+                      b.price_sat_per_ph_day < s.market.fillable_ask_sat_per_ph_day;
+                    return (
                     <tr key={b.braiins_order_id} className="border-t border-slate-800">
                       <td className="py-2 px-3 font-mono text-xs">
                         <BidIdCell id={b.braiins_order_id} />
@@ -1606,20 +1633,37 @@ export function Status() {
                       </td>
                       <td className={`py-2 px-3 text-xs ${bidStatusClass(b.status)}`}>
                         {bidStatusLabel(b.status)}
+                        {parked && (
+                          <span className="ml-1.5 rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300 align-middle">
+                            <Trans>parked</Trans>
+                          </span>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             {/* Mobile: cards */}
             <div className="sm:hidden space-y-2">
-              {s.bids.map((b) => (
+              {s.bids.map((b) => {
+                const parked =
+                  b.is_owned &&
+                  s.market?.fillable_ask_sat_per_ph_day != null &&
+                  b.price_sat_per_ph_day != null &&
+                  b.price_sat_per_ph_day < s.market.fillable_ask_sat_per_ph_day;
+                return (
                 <div key={b.braiins_order_id} className="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-2 text-sm">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-xs font-medium ${bidStatusClass(b.status)}`}>
                       {bidStatusLabel(b.status)}
                     </span>
+                    {parked && (
+                      <span className="rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                        <Trans>parked</Trans>
+                      </span>
+                    )}
                     {b.is_owned ? (
                       <span className="text-xs text-emerald-400"><Trans>autopilot</Trans></span>
                     ) : (
@@ -1653,7 +1697,8 @@ export function Status() {
                   </div>
                   <BidProgress pct={b.progress_pct} />
                 </div>
-              ))}
+                );
+              })}
             </div>
           </>
         ) : nicehashOrder?.exists ? null : (
@@ -1928,12 +1973,16 @@ function primaryBidPricePH(s: StatusResponse): number | null {
 function OperationsCard({
   s,
   currentBidPH,
+  priceProvider = 'BRAIINS',
   hashpricePH,
   onRunMode,
   runModePending,
   nicehashOrder,
 }: {
   s: StatusResponse;
+  /** #58: which venue the hero PRICE belongs to, so the subtitle is honest
+   *  about whether it's the Braiins bid or the live NiceHash order price. */
+  priceProvider?: 'BRAIINS' | 'NICEHASH';
   /** #dual-provider: live NiceHash order to show when Braiins is parked. */
   nicehashOrder?: ProviderEvaluation['nicehashOrder'];
   /**
@@ -2049,7 +2098,9 @@ function OperationsCard({
                     </>
                   );
                 })()}{' '}
-                {activeOwned.length > 1 ? (
+                {priceProvider === 'NICEHASH' ? (
+                  <Trans>NiceHash order · active</Trans>
+                ) : activeOwned.length > 1 ? (
                   <Trans>current bid · primary of {activeOwned.length}</Trans>
                 ) : (
                   <Trans>current bid</Trans>

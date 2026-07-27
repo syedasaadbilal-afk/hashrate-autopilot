@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-07-26 (dual-provider intelligence batch)
+
+### `[Release]` v1.18.13
+
+The final v13 batch: turns the dual-provider engine from "evaluate + switch" into a system that supplements, prices honestly, accounts across both venues, and shows what it's doing. Folds tasks #48, #49, #51, #52, #55, #56, #58, #60, #62.
+
+### `[Feature]` Braiins supplement when NiceHash is rationed (#55/#56)
+
+Added a rationing detector: when the NiceHash book has no deep-liquidity block (cumulative delivered supply below `nicehash_deep_liquidity_eh`, default 1 EH/s), the market is treated as rationed. In that state the daemon (a) holds the NiceHash price instead of chasing it up into thin scraps, and (b) runs a supplement - throttles the NiceHash order to 1 PH and un-parks the Braiins bid at its target, so the two deliver ~2 PH in parallel. A small state machine unwinds cleanly on normalisation: Braiins is parked first, then the NiceHash limit is restored to its full target, so NiceHash is never left stuck at 1 PH.
+
+### `[Feature]` Timeline reflects NiceHash events (#52)
+
+NiceHash order/price events (create / edit / park / cancel) are now recorded to `bid_events` with a `provider` column (migration 0125) and shown in the History Timeline, each tagged with a "NiceHash" badge. The Braiins price-chart marker overlay stays Braiins-only so NiceHash markers don't clutter the Braiins market series.
+
+### `[Improvement]` Switch on NiceHash's ACTUAL deliverable price (#60)
+
+The switch decision now compares on `max(current NiceHash order price, desired)`. On the way down, NiceHash's capped + cooled-down decreases lag the target, so this keeps its cost at the real live price until it genuinely converges - Braiins isn't parked on a price the order hasn't reached. A parked order's live price sits far below the fill line, so `max()` falls back to the effective reactivation price and can't cause a flap.
+
+### `[Improvement]` UPTIME / AVG COST DELIVERED / VS HASHPRICE count both providers (#48/#49)
+
+Per-tick NiceHash delivery + spend + active provider are now captured (migration 0126). Uptime credits whichever venue delivered above the noise floor (Braiins counter or NiceHash accepted speed). Avg cost delivered and vs-hashprice blend the real settlement counters from both venues (fee-inclusive - `primary_bid_consumed_sat` is what Braiins charged, NiceHash `payedAmount` is what NiceHash charged incl. margin), weighted by each venue's delivered EH-days. With NiceHash idle the figures reduce exactly to the previous Braiins-only values.
+
+### `[Improvement]` Dashboard reflects parked state (#58)
+
+The hero PRICE follows the active provider - when NiceHash is active it shows the live NiceHash order price (labelled "NiceHash order · active") instead of the parked Braiins bid. Parked Braiins bids (price below the current fill line) are labelled "parked" in the BIDS panel.
+
+### `[Improvement]` NiceHash target + deep-liquidity on the Strategy page (#62)
+
+The NiceHash target hashrate now sits next to the Braiins target under Hashrate targets, and the deep-liquidity threshold is a configurable field.
+
+### `[Fix]` Braiins rejection-ratio chart no longer freezes at ~33% (#51)
+
+The Hashrate chart's Braiins rejection line divided by the adjacent-point Δpurchased with no minimum; a handful of cleared shares between counter syncs produced a wild ratio (e.g. 1 reject / 3 cleared = 33%) that then carried forward and "stuck". A measurement now requires a minimum cleared-share delta (accumulating the interval until it's statistically meaningful), so the line stays on the true ~1% rate.
+
+### `[Note]` Deferred to a later build (#51 remainder, #50)
+
+A separate NiceHash-delivered line on the Hashrate chart and an Ocean-derived effective-rejection figure for NiceHash are deferred - they add under-testable aggregation plumbing and a new derived metric better validated against live data. NiceHash delivered speed is already surfaced numerically (AVG NICEHASH tile, provider card, provider-aware hero). #50 was investigate-only: the AVG NICEHASH vs AVG OCEAN gap is expected - they measure different things (NiceHash's matched/accepted speed vs Ocean's lagged 5-min received hashrate net of routing/rejection).
+
 ## 2026-07-25 (consolidated NiceHash fixes)
 
 ### `[Release]` v1.18.12

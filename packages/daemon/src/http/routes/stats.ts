@@ -277,36 +277,40 @@ async function computeMetrics(
       -- outage in a 24 h window still read ~99% uptime. Offline time
       -- counts as downtime; the 5-minute cap stays on the numerator
       -- so gap time can never count as "up".
+      -- #49: uptime is now provider-aware. A tick counts as "up" when the
+      -- ACTIVE venue delivered above the 0.05 PH/s noise floor - Braiins
+      -- (counter-derived delta) OR NiceHash (its accepted/delivered speed).
+      -- During a rationing supplement BOTH deliver, and either satisfies this.
+      -- Previously Braiins-only, so a NiceHash-active window read as downtime.
       SUM(CASE WHEN dur BETWEEN 1 AND 300000
-                AND our_bid > 0
-                AND delta IS NOT NULL AND delta >= 0
-                AND delta * 86400000000.0 >= 0.05 * our_bid * dur
+                AND (
+                  (our_bid > 0
+                    AND delta IS NOT NULL AND delta >= 0
+                    AND delta * 86400000000.0 >= 0.05 * our_bid * dur)
+                  OR nh_delivered_ph >= 0.05
+                )
            THEN dur ELSE 0 END) AS uptime_up_ms,
 
-      -- #254 / #290: time with an active bid (numerator for bid
-      -- coverage, same wall-clock denominator treatment as uptime).
-      -- Independent of whether the bid was delivering - this measures
-      -- orderbook availability ("expected" downtime when low:
-      -- nothing matched our criteria). Daemon-offline gaps count as
-      -- no-bid time (#290): no reconstruction of whether the bid
-      -- survived the gap.
+      -- #254 / #290 / #49: time with an active position on EITHER venue
+      -- (numerator for bid coverage, same wall-clock denominator treatment as
+      -- uptime). A Braiins bid posted (our_bid > 0) or NiceHash delivering.
       SUM(CASE WHEN dur BETWEEN 1 AND 300000
-                AND our_bid > 0
+                AND (our_bid > 0 OR nh_delivered_ph >= 0.05)
            THEN dur ELSE 0 END) AS bid_active_ms,
 
-      -- #254: of the time we DID have an active bid, what % was
-      -- actually delivering hashrate above the noise floor? Isolates
-      -- hardware / connection / Datum-side failures from orderbook
-      -- unavailability ("unexpected" downtime when low). Same
-      -- threshold logic as uptime_pct's numerator; denominator is
-      -- bid-active time instead of total time.
-      CASE WHEN SUM(CASE WHEN dur BETWEEN 1 AND 300000 AND our_bid > 0 THEN dur ELSE 0 END) > 0 THEN
+      -- #254 / #49: of the time we DID have an active position, what % was
+      -- actually delivering above the noise floor (on either venue)? Same
+      -- combined threshold as uptime_up_ms; denominator is bid-active time.
+      CASE WHEN SUM(CASE WHEN dur BETWEEN 1 AND 300000 AND (our_bid > 0 OR nh_delivered_ph >= 0.05) THEN dur ELSE 0 END) > 0 THEN
         SUM(CASE WHEN dur BETWEEN 1 AND 300000
-                  AND our_bid > 0
-                  AND delta IS NOT NULL AND delta >= 0
-                  AND delta * 86400000000.0 >= 0.05 * our_bid * dur
+                  AND (
+                    (our_bid > 0
+                      AND delta IS NOT NULL AND delta >= 0
+                      AND delta * 86400000000.0 >= 0.05 * our_bid * dur)
+                    OR nh_delivered_ph >= 0.05
+                  )
              THEN dur ELSE 0 END) * 100.0
-          / SUM(CASE WHEN dur BETWEEN 1 AND 300000 AND our_bid > 0 THEN dur ELSE 0 END)
+          / SUM(CASE WHEN dur BETWEEN 1 AND 300000 AND (our_bid > 0 OR nh_delivered_ph >= 0.05) THEN dur ELSE 0 END)
       ELSE NULL END AS uptime_delivery_when_bid_active_pct,
 
       -- Avg Braiins delivered: computed from counter deltas, not the
@@ -418,7 +422,29 @@ async function computeMetrics(
           / SUM(CASE WHEN valid AND our_bid > 0 AND fillable_ask IS NOT NULL THEN CAST(delta AS REAL) / our_bid ELSE 0 END)
         - (CAST(SUM(CASE WHEN valid AND our_bid > 0 AND fillable_ask IS NOT NULL THEN fillable_ask * CAST(delta AS REAL) / our_bid ELSE 0 END) AS REAL)
           / SUM(CASE WHEN valid AND our_bid > 0 AND fillable_ask IS NOT NULL THEN CAST(delta AS REAL) / our_bid ELSE 0 END))
-      ELSE NULL END AS avg_settled_overpay
+      ELSE NULL END AS avg_settled_overpay,
+
+      -- #48: raw components for the BLENDED (Braiins + NiceHash) avg cost
+      -- delivered + vs-hashprice tiles. Combined in JS to keep the SQL flat and
+      -- unit-testable. These are settlement counters (real sat spent), so the
+      -- figure is fee-inclusive by construction: primary_bid_consumed_sat is
+      -- what Braiins charged, nicehash_consumed_sat (payedAmount) is what
+      -- NiceHash charged including its marketplace margin - no synthetic fee
+      -- multiplier is applied to historical spend.
+      --
+      -- Braiins EH-days delivered = delta / our_bid (our_bid = sat/EH/day).
+      -- NiceHash EH-days delivered = nh_delivered_ph/1000 (EH) × dur/86400000 (days)
+      --   = nh_delivered_ph × dur / (1000 × 86400000).
+      CAST(SUM(CASE WHEN valid AND our_bid > 0 THEN delta ELSE 0 END) AS REAL) AS br_spend,
+      CAST(SUM(CASE WHEN valid AND our_bid > 0 THEN CAST(delta AS REAL) / our_bid ELSE 0 END) AS REAL) AS br_ehdays,
+      CAST(SUM(CASE WHEN valid AND our_bid > 0 AND hashprice IS NOT NULL THEN delta ELSE 0 END) AS REAL) AS br_spend_hp,
+      CAST(SUM(CASE WHEN valid AND our_bid > 0 AND hashprice IS NOT NULL THEN CAST(delta AS REAL) / our_bid ELSE 0 END) AS REAL) AS br_ehdays_hp,
+      CAST(SUM(CASE WHEN valid AND our_bid > 0 AND hashprice IS NOT NULL THEN hashprice * CAST(delta AS REAL) / our_bid ELSE 0 END) AS REAL) AS br_hp_ehdays,
+      CAST(SUM(CASE WHEN nh_valid THEN nh_delta ELSE 0 END) AS REAL) AS nh_spend,
+      CAST(SUM(CASE WHEN nh_valid THEN nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_ehdays,
+      CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN nh_delta ELSE 0 END) AS REAL) AS nh_spend_hp,
+      CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_ehdays_hp,
+      CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN hashprice * nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_hp_ehdays
     FROM (
       SELECT
         tick_at,
@@ -430,10 +456,19 @@ async function computeMetrics(
         fillable_ask,
         delta,
         dur,
+        nh_delivered_ph,
+        nh_delta,
         (delta IS NOT NULL
           AND delta >= 0
           AND delivered_ph > 0.05
-          AND dur BETWEEN 1 AND 300000) AS valid
+          AND dur BETWEEN 1 AND 300000) AS valid,
+        -- #48: NiceHash contributes to blended cost only when it actually
+        -- delivered (accepted speed above the noise floor) AND we have a
+        -- clean spend delta for the tick.
+        (nh_delta IS NOT NULL
+          AND nh_delta >= 0
+          AND nh_delivered_ph > 0.05
+          AND dur BETWEEN 1 AND 300000) AS nh_valid
       FROM (
         SELECT
           tick_at,
@@ -443,6 +478,9 @@ async function computeMetrics(
           hashprice_sat_per_eh_day AS hashprice,
           fillable_ask_sat_per_eh_day AS fillable_ask,
           our_primary_price_sat_per_eh_day AS our_bid,
+          -- #49: NiceHash delivered speed this tick (PH/s), for the
+          -- provider-aware uptime + blended cost. NULL/pre-0126 -> 0.
+          COALESCE(nicehash_delivered_ph, 0) AS nh_delivered_ph,
           CASE
             WHEN primary_bid_consumed_sat IS NOT NULL
               AND primary_bid_consumed_sat > 0
@@ -452,6 +490,19 @@ async function computeMetrics(
             THEN primary_bid_consumed_sat - LAG(primary_bid_consumed_sat) OVER (ORDER BY tick_at)
             ELSE NULL
           END AS delta,
+          -- #48: per-tick NiceHash spend delta (payedAmount counter), same
+          -- monotonic-counter guards as the Braiins delta. A refill/new order
+          -- can reset it, so a backward step yields NULL (skipped), not a
+          -- negative spend.
+          CASE
+            WHEN nicehash_consumed_sat IS NOT NULL
+              AND nicehash_consumed_sat > 0
+              AND LAG(nicehash_consumed_sat) OVER (ORDER BY tick_at) IS NOT NULL
+              AND LAG(nicehash_consumed_sat) OVER (ORDER BY tick_at) > 0
+              AND nicehash_consumed_sat >= LAG(nicehash_consumed_sat) OVER (ORDER BY tick_at)
+            THEN nicehash_consumed_sat - LAG(nicehash_consumed_sat) OVER (ORDER BY tick_at)
+            ELSE NULL
+          END AS nh_delta,
           COALESCE(
             LEAD(tick_at) OVER (ORDER BY tick_at) - tick_at,
             60000
@@ -499,6 +550,30 @@ async function computeMetrics(
   }
 
   const tickCount = Number(r['tick_count'] ?? 0);
+
+  // #48: blend Braiins + NiceHash settlement counters into the AVG COST
+  // DELIVERED and VS HASHPRICE tiles. Both are real sat spent (fee-inclusive
+  // by construction), weighted by each venue's delivered EH-days. When NiceHash
+  // never delivered in the window the NiceHash terms are 0 and the result
+  // reduces exactly to the previous Braiins-only figure.
+  const num = (k: string): number => (r[k] !== null && r[k] !== undefined ? Number(r[k]) : 0);
+  const brSpend = num('br_spend');
+  const brEhdays = num('br_ehdays');
+  const nhSpend = num('nh_spend');
+  const nhEhdays = num('nh_ehdays');
+  const brEhdaysHp = num('br_ehdays_hp');
+  const nhEhdaysHp = num('nh_ehdays_hp');
+  const totalEhdays = brEhdays + nhEhdays;
+  const totalEhdaysHp = brEhdaysHp + nhEhdaysHp;
+  // sat/EH/day, converted to sat/PH/day below.
+  const blendedAvgCostEhDay = totalEhdays > 0 ? (brSpend + nhSpend) / totalEhdays : null;
+  let blendedVsHashpriceEhDay: number | null = null;
+  if (totalEhdaysHp > 0) {
+    const blendedAvgCostHp = (num('br_spend_hp') + num('nh_spend_hp')) / totalEhdaysHp;
+    const blendedHashprice = (num('br_hp_ehdays') + num('nh_hp_ehdays')) / totalEhdaysHp;
+    blendedVsHashpriceEhDay = blendedAvgCostHp - blendedHashprice;
+  }
+
   return {
     tick_count: tickCount,
     // #290: percentages against wall clock; null when the window has
@@ -515,9 +590,12 @@ async function computeMetrics(
     avg_ocean_hashrate_ph:
       r['avg_ocean_hashrate'] !== null ? Number(r['avg_ocean_hashrate']) : null,
     total_ph_hours: r['total_ph_hours'] !== null ? Number(r['total_ph_hours']) : null,
-    // SQL returns sat/EH/day; convert to sat/PH/day for the dashboard.
-    avg_overpay_vs_hashprice_sat_per_ph_day: r['avg_overpay_vs_hashprice'] !== null ? Number(r['avg_overpay_vs_hashprice']) / EH_PER_PH : null,
-    avg_cost_per_ph_sat_per_ph_day: r['avg_cost'] !== null ? Number(r['avg_cost']) / EH_PER_PH : null,
+    // #48: BLENDED across both providers (sat/EH/day -> sat/PH/day). Reduces to
+    // the Braiins-only figure when NiceHash didn't deliver in the window.
+    avg_overpay_vs_hashprice_sat_per_ph_day:
+      blendedVsHashpriceEhDay !== null ? blendedVsHashpriceEhDay / EH_PER_PH : null,
+    avg_cost_per_ph_sat_per_ph_day:
+      blendedAvgCostEhDay !== null ? blendedAvgCostEhDay / EH_PER_PH : null,
     avg_intent_overpay_sat_per_ph_day: r['avg_intent_overpay'] !== null ? Number(r['avg_intent_overpay']) / EH_PER_PH : null,
     avg_settled_overpay_sat_per_ph_day: r['avg_settled_overpay'] !== null ? Number(r['avg_settled_overpay']) / EH_PER_PH : null,
   };

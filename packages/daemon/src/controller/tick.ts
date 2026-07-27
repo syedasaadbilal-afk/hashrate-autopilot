@@ -16,16 +16,17 @@
 import { NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS } from '@hashrate-autopilot/nicehash-client';
 
 import { decide } from './decide.js';
-import { decideNicehash } from './decide-nicehash.js';
+import { decideNicehash, type NicehashOrderAction } from './decide-nicehash.js';
 import { evaluateProviders, type EvaluateProvidersResult } from './evaluate-providers.js';
 import { execute, type ExecuteDeps } from './execute.js';
-import { executeNicehash } from './execute-nicehash.js';
+import { executeNicehash, type ExecuteNicehashResult } from './execute-nicehash.js';
 import { gate } from './gate.js';
 import { observe, type ObserveDeps } from './observe.js';
 import { computeParkPrice } from './park.js';
 import { decidePauseEvent } from './pause-events.js';
 import type { Provider, ProviderSelectState } from './provider-select.js';
 import type { NiceHashLiveParams, NiceHashService } from '../services/nicehash-service.js';
+import type { BidEventKind } from '../state/types.js';
 import type { ExecutionResult, GateOutcome, Proposal, State } from './types.js';
 
 export interface TickDeps extends ObserveDeps, ExecuteDeps {
@@ -125,6 +126,19 @@ export class Controller {
   private lastProviderEvaluation: ProviderEvaluationSnapshot | null = null;
 
   /**
+   * #56: Braiins-supplements-NiceHash state machine. NiceHash active + rationed
+   * => Braiins runs concurrently (NiceHash throttled to 1 PH, Braiins un-parked).
+   *   OFF       - normal single-active operation.
+   *   ON        - supplement live: Braiins un-parked, NiceHash limit throttled.
+   *   UNWINDING - market normalised: Braiins being parked this tick, NiceHash
+   *               limit stays throttled one more tick so total never dips to 0;
+   *               next tick returns to OFF and the NiceHash limit is restored.
+   * Read one tick behind by decide() via state.nicehash_supplement_active, like
+   * active_provider.
+   */
+  private nicehashSupplement: 'OFF' | 'ON' | 'UNWINDING' = 'OFF';
+
+  /**
    * #dual-provider: epoch-ms until NiceHash's 10-min price-DECREASE cooldown
    * clears. Learned from (a) our own successful decreases and (b) the EXACT
    * "seconds till available" NiceHash returns on a rejected decrease - the
@@ -196,6 +210,9 @@ export class Controller {
       // #dual-provider: last-known NiceHash delivered speed (one tick behind),
       // so floor / zero-hashrate alerts reflect NiceHash when it's active.
       nicehashDeliveredPh: this.lastProviderEvaluation?.nicehashOrder?.acceptedSpeedPh ?? null,
+      // #56: while supplementing (ON or unwinding), Braiins must stay live -
+      // decide() reads this to skip parking. One tick behind, like the above.
+      nicehashSupplementActive: this.nicehashSupplement !== 'OFF',
     });
     this.belowFloorSince = state.below_floor_since;
     this.aboveFloorTicks = state.above_floor_ticks;
@@ -399,6 +416,17 @@ export class Controller {
         bid_edit_deadband_pct: state.config.bid_edit_deadband_pct,
         run_mode: state.run_mode,
         action_mode: 'NORMAL' as const,
+        // #48/#49/#51: dual-provider attribution, one tick behind (the fresh
+        // NiceHash order snapshot is fetched later this tick, in
+        // evaluateProvidersTick). active_provider matches state.active_provider;
+        // the NiceHash delivered/spend come from the last evaluation's order.
+        active_provider: state.active_provider ?? 'BRAIINS',
+        nicehash_delivered_ph:
+          this.lastProviderEvaluation?.nicehashOrder?.acceptedSpeedPh ?? null,
+        nicehash_consumed_sat:
+          this.lastProviderEvaluation?.nicehashOrder?.spentBtc != null
+            ? Math.round(this.lastProviderEvaluation.nicehashOrder.spentBtc * 1e8)
+            : null,
       });
     } catch (err) {
       console.warn(`[tick] metrics insert failed: ${(err as Error).message}`);
@@ -444,9 +472,17 @@ export class Controller {
       // Depth-aware fill line: anchor to where enough supply exists to fill our
       // whole target, not to a cheap order catching only a trickle.
       nicehashTargetPh: cfg.nicehash_target_hashrate_ph,
+      // #55: rationing detector threshold - below this cumulative supply the
+      // book is rationed, so stop chasing the price up and let Braiins supplement.
+      nicehashDeepLiquidityEh: cfg.nicehash_deep_liquidity_eh,
       overpaySatPerPhDay: cfg.overpay_sat_per_eh_day / 1000,
       braiinsFeePct: cfg.braiins_fee_pct,
       nicehashFeePct: cfg.nicehash_fee_pct,
+      // #60: compare on the ACTUAL deliverable price. Use the last-seen live
+      // order price (one tick behind; the snapshot is fetched later this tick) so
+      // Braiins isn't parked before NiceHash's capped/cooled-down price genuinely
+      // converges, and a parked order can't look artificially cheap.
+      nicehashCurrentOrderPriceSatPerPhDay: this.nicehashLastPriceSatPerPhDay,
       switchConfig: {
         switchThresholdPct: cfg.provider_switch_threshold_pct,
         sustainedWindowMinutes: cfg.provider_switch_sustained_window_minutes,
@@ -477,6 +513,37 @@ export class Controller {
 
     this.activeProvider = seededProvider;
     this.challengerReadySince = seededChallengerReadySince;
+
+    // #56: Braiins-supplements-NiceHash state machine. Advance it from this
+    // tick's committed provider + rationing reading. It's read one tick behind
+    // by decide() (via state.nicehash_supplement_active) and drives the NiceHash
+    // throttle below, so the transition happens here (after the provider commit)
+    // and the effects apply from the next observe.
+    //   - NiceHash not active            -> OFF (single-active; Braiins primary).
+    //   - NiceHash active + rationed      -> ON  (Braiins un-parked, NiceHash
+    //                                             throttled to 1 PH; total ~2 PH).
+    //   - NiceHash active + NOT rationed  -> unwind: ON->UNWINDING (park Braiins,
+    //                                             keep NiceHash throttled a tick),
+    //                                             UNWINDING->OFF (restore NiceHash
+    //                                             to target). Never leaves NiceHash
+    //                                             stuck at the throttled 1 PH.
+    const nicehashActive = this.activeProvider === 'NICEHASH';
+    if (!nicehashActive) {
+      this.nicehashSupplement = 'OFF';
+    } else if (evald.nicehashRationed) {
+      this.nicehashSupplement = 'ON';
+    } else if (this.nicehashSupplement === 'ON') {
+      this.nicehashSupplement = 'UNWINDING';
+    } else {
+      this.nicehashSupplement = 'OFF';
+    }
+    if (this.nicehashSupplement !== 'OFF') {
+      console.info(
+        `[provider] NiceHash rationed - Braiins supplement ${this.nicehashSupplement} ` +
+          `(NiceHash throttled to 1 PH, Braiins un-parked; total ~2 PH)`,
+      );
+    }
+
     this.lastProviderEvaluation = {
       at: state.tick_at,
       activeProvider: seededProvider,
@@ -565,6 +632,8 @@ export class Controller {
           // order has fallen to it (avoids per-tick increases that would keep
           // NiceHash's 10-min decrease lockout permanently reset).
           overpaySatPerPhDay: cfg.overpay_sat_per_eh_day / 1000,
+          // #55: hold the price (don't chase up) while the book is rationed.
+          rationed: evald.nicehashRationed,
           parkPriceSatPerPhDay: parkPrice,
           order: {
             exists: snapshot.exists,
@@ -606,13 +675,40 @@ export class Controller {
           marketFactor: book.marketFactor,
           displayMarketFactor: book.displayMarketFactor,
         };
+        // #61: the order limit we want set on CREATE/EDIT = the config target,
+        // clamped to a whole PH >= 1 (NiceHash floor is 1 PH in 1 PH steps).
+        // NiceHash accepts limit decreases (confirmed live), so this converges a
+        // larger-than-target order down to the target.
+        // #56: while supplementing (ON or unwinding) throttle to the 1 PH floor
+        // so NiceHash + the un-parked Braiins bid sum to ~2 PH instead of
+        // doubling up; restored to the target automatically once the machine
+        // returns to OFF (so NiceHash is never left stuck at 1 PH).
+        const nicehashTargetLimitPh = Math.max(1, Math.round(cfg.nicehash_target_hashrate_ph));
+        const nicehashDesiredLimitPh =
+          this.nicehashSupplement === 'OFF' ? nicehashTargetLimitPh : 1;
         const nhResults = await executeNicehash(
           svc,
           actions,
           state.run_mode,
           params,
-          cfg.nicehash_target_hashrate_ph,
-          snapshot.limitPh,
+          nicehashDesiredLimitPh,
+        );
+
+        // #52: record executed NiceHash order/price events into bid_events so
+        // the Timeline reflects them alongside Braiins (provider='NICEHASH').
+        // nhResults is 1:1 with `actions` (executeNicehash pushes one result
+        // per action, in order), so zip by index. Only EXECUTED rows are
+        // logged (mirrors the Braiins execute() path; DRY-RUN records nothing).
+        // Prices convert sat/PH/day -> sat/EH/day (x1000) to match the column
+        // convention the /api serialisation divides back down by.
+        await this.recordNicehashBidEvents(
+          actions,
+          nhResults,
+          snapshot.currentPriceSatPerPhDay,
+          nicehashDesiredLimitPh,
+          state.tick_at,
+          state.config.overpay_sat_per_eh_day,
+          state.config.max_overpay_vs_hashprice_sat_per_eh_day,
         );
 
         // Learn / refresh the decrease cooldown so we stop hammering NiceHash
@@ -687,6 +783,80 @@ export class Controller {
         }
       } catch (err) {
         console.warn(`[nicehash] order maintenance failed (non-fatal): ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /**
+   * #52: persist executed NiceHash actions as bid_events (provider='NICEHASH')
+   * so the Timeline shows NiceHash create/edit/park/cancel next to Braiins.
+   *
+   * Kind mapping onto the existing bid_events vocabulary (no new dashboard
+   * glyphs required): CREATE->CREATE_BID, EDIT_PRICE->EDIT_PRICE, PARK->
+   * BID_PAUSED (a park idles the order like a pause), CANCEL->CANCEL_BID.
+   * REFILL is a free budget top-up, not an order/price change, so it's not
+   * logged (it would only add noise to the "order and price changes" feed).
+   *
+   * NiceHash prices are sat/PH/day; bid_events stores sat/EH/day (the API
+   * divides back by 1000), so multiply by EH_PER_PH. The pre-edit price comes
+   * from the order snapshot taken this tick.
+   */
+  private async recordNicehashBidEvents(
+    actions: readonly NicehashOrderAction[],
+    results: readonly ExecuteNicehashResult[],
+    prevPriceSatPerPhDay: number | null,
+    desiredLimitPh: number,
+    occurredAt: number,
+    overpaySatPerEhDay: number,
+    maxOverpayVsHashpriceSatPerEhDay: number | null,
+  ): Promise<void> {
+    const EH_PER_PH = 1000;
+    const kindMap: Partial<Record<NicehashOrderAction['kind'], BidEventKind>> = {
+      CREATE: 'CREATE_BID',
+      EDIT_PRICE: 'EDIT_PRICE',
+      PARK: 'BID_PAUSED',
+      CANCEL: 'CANCEL_BID',
+    };
+    for (let i = 0; i < actions.length; i += 1) {
+      const a = actions[i]!;
+      const r = results[i];
+      // Only actually-executed mutations become Timeline rows (matches the
+      // Braiins execute() path; DRY-RUN logs but records nothing).
+      if (!r || r.outcome !== 'EXECUTED') continue;
+      const kind = kindMap[a.kind];
+      if (!kind) continue; // REFILL / NONE - not an order/price change
+      const isCreate = a.kind === 'CREATE';
+      const newPriceSat =
+        a.submitPriceSatPerPhDay !== undefined
+          ? Math.round(a.submitPriceSatPerPhDay * EH_PER_PH)
+          : null;
+      // Old price only makes sense on an edit/park (create has no prior price).
+      const oldPriceSat =
+        !isCreate && prevPriceSatPerPhDay !== null
+          ? Math.round(prevPriceSatPerPhDay * EH_PER_PH)
+          : null;
+      try {
+        await this.deps.bidEventsRepo.insert({
+          occurred_at: occurredAt,
+          source: 'AUTOPILOT',
+          kind,
+          provider: 'NICEHASH',
+          // Reuse the order-id column as a generic venue order id. CREATE has
+          // no id yet this tick (like the Braiins CREATE path), so null.
+          braiins_order_id: isCreate ? null : (a.orderId ?? null),
+          old_price_sat: oldPriceSat,
+          new_price_sat: newPriceSat,
+          speed_limit_ph: isCreate ? desiredLimitPh : null,
+          amount_sat:
+            isCreate && a.amountBtc !== undefined
+              ? Math.round(a.amountBtc * 1e8)
+              : null,
+          reason: `NiceHash · ${a.reason}`,
+          overpay_sat_per_eh_day: overpaySatPerEhDay,
+          max_overpay_vs_hashprice_sat_per_eh_day: maxOverpayVsHashpriceSatPerEhDay,
+        });
+      } catch (err) {
+        console.warn(`[nicehash] bid_events insert failed: ${(err as Error).message}`);
       }
     }
   }

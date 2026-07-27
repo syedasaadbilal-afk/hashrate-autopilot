@@ -316,6 +316,17 @@ export interface State {
    * treated as 'BRAIINS' (single-provider behaviour, preserving existing tests).
    */
   readonly active_provider?: Provider;
+
+  /**
+   * #56: NiceHash is active but RATIONED (its book has no deep-liquidity block),
+   * so Braiins is running CONCURRENTLY as a supplement to make up the shortfall
+   * (NiceHash throttled to 1 PH + Braiins un-parked at its target => total ~2 PH).
+   * When true, decide() does NOT park the Braiins bid even though NiceHash is the
+   * active provider - the two run in parallel until the dislocation resolves.
+   * Absent/false = normal single-active behaviour. One tick behind, like
+   * active_provider.
+   */
+  readonly nicehash_supplement_active?: boolean;
 }
 
 // ---------------------------------------------------------------------------

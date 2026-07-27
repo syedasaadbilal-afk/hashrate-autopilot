@@ -24,6 +24,7 @@
 
 import {
   cheapestFillableForDepth,
+  deepLiquidityPrice,
   desiredBidAboveFillable,
   lowestFillingPrice,
   type NiceHashOrderBookOrder,
@@ -60,6 +61,13 @@ export interface EvaluateProvidersInputs {
    * When 0/unset, falls back to `lowestFillingPrice` (cheapest order with any fill).
    */
   readonly nicehashTargetPh?: number;
+  /**
+   * Deep-liquidity threshold (EH/s). The NiceHash market is RATIONED this tick
+   * when the book's cumulative delivered supply never reaches this - no sizeable
+   * block to fill against. Used to stop the daemon chasing the price up into
+   * thin scraps and to trigger the Braiins supplement. 0/undefined disables it.
+   */
+  readonly nicehashDeepLiquidityEh?: number;
 
   /** Shared overpay cushion, sat/PH/day (config.overpay_sat_per_eh_day ÷ 1000). */
   readonly overpaySatPerPhDay: number;
@@ -75,6 +83,20 @@ export interface EvaluateProvidersInputs {
    */
   readonly braiinsFeePct?: number;
   readonly nicehashFeePct?: number;
+
+  /**
+   * #60: the price NiceHash's live order is CURRENTLY set at (sat/PH/day), from
+   * the order snapshot this tick. The switch decision uses
+   * max(currentOrderPrice, effective) as NiceHash's cost so we don't park
+   * Braiins on a cheaper DESIRED price that the order hasn't actually reached
+   * yet (NiceHash decreases are capped + cooled down, so the live price lags
+   * the target on the way down). When the order is PARKED its live price sits
+   * far below the fill line, so max() naturally falls back to the effective
+   * reactivation price - preventing a parked order from looking artificially
+   * cheap and flapping the active provider back to NiceHash. null/undefined
+   * (no live order, e.g. before first create) -> use effective alone.
+   */
+  readonly nicehashCurrentOrderPriceSatPerPhDay?: number | null;
 
   readonly switchConfig: ProviderSelectConfig;
   readonly prevProviderState: ProviderSelectState;
@@ -92,6 +114,20 @@ export interface EvaluateProvidersResult {
   readonly nicehashCostSatPerPhDay: number | null;
   /** NiceHash fill-line price before overpay, sat/PH/day (diagnostics). null if unpriceable. */
   readonly nicehashFillLineSatPerPhDay: number | null;
+  /**
+   * #60: the NiceHash price the switch decision actually compared on, sat/PH/day
+   * = max(currentOrderPrice, effective). Surfaced for diagnostics/logging so the
+   * operator can see we waited for the ACTUAL deliverable price. null if
+   * unpriceable.
+   */
+  readonly nicehashSwitchBasisSatPerPhDay: number | null;
+  /**
+   * True when the NiceHash book lacks a deep-liquidity block (cumulative
+   * delivered supply < nicehashDeepLiquidityEh). The daemon should not chase the
+   * price up in this state; Braiins supplements instead. False when priceable or
+   * the check is disabled.
+   */
+  readonly nicehashRationed: boolean;
   readonly selection: ProviderSelectResult;
 }
 
@@ -118,6 +154,7 @@ export function evaluateProviders(inputs: EvaluateProvidersInputs): EvaluateProv
   // --- NiceHash effective price ---
   let nicehashFillLineSatPerPhDay: number | null = null;
   let nicehashEffectiveSatPerPhDay: number | null = null;
+  let nicehashRationed = false;
   if (
     inputs.nicehashOrders &&
     inputs.nicehashOrders.length > 0 &&
@@ -125,6 +162,13 @@ export function evaluateProviders(inputs: EvaluateProvidersInputs): EvaluateProv
     inputs.nicehashMarketFactor > 0
   ) {
     const orders = filterByMarket(inputs.nicehashOrders, inputs.nicehashMarket);
+    // #55: rationing check. The market is rationed when the book has no
+    // deep-liquidity block (cumulative delivered supply < threshold EH). In that
+    // state we don't chase the price up into thin scraps - Braiins supplements.
+    const deepThresholdPh = (inputs.nicehashDeepLiquidityEh ?? 0) * 1000;
+    nicehashRationed =
+      deepThresholdPh > 0 &&
+      deepLiquidityPrice(orders, deepThresholdPh, inputs.nicehashMarketFactor) === null;
     // Depth-aware anchor when we know our target: the cheapest price whose
     // cumulative delivered supply covers our order, so we bid where real supply
     // is (not to a cheaper order catching only a trickle). Falls back to the
@@ -154,9 +198,25 @@ export function evaluateProviders(inputs: EvaluateProvidersInputs): EvaluateProv
     braiinsEffectiveSatPerPhDay !== null
       ? braiinsEffectiveSatPerPhDay * (1 + braiinsFeePct / 100)
       : null;
+  // #60: compare on the ACTUAL deliverable price. When a live order price is
+  // known, use max(currentOrderPrice, effective): on the way down the capped/
+  // cooled-down live price lags the target, so this keeps NiceHash's cost at the
+  // real (higher) live price until it genuinely converges - Braiins isn't parked
+  // on a desired price the order hasn't reached. A parked order's live price is
+  // far below the fill line, so max() yields the effective reactivation price
+  // and the parked order can't look artificially cheap and cause a flap.
+  const nicehashSwitchBasisSatPerPhDay =
+    nicehashEffectiveSatPerPhDay === null
+      ? null
+      : inputs.nicehashCurrentOrderPriceSatPerPhDay != null
+        ? Math.max(
+            inputs.nicehashCurrentOrderPriceSatPerPhDay,
+            nicehashEffectiveSatPerPhDay,
+          )
+        : nicehashEffectiveSatPerPhDay;
   const nicehashCostSatPerPhDay =
-    nicehashEffectiveSatPerPhDay !== null
-      ? nicehashEffectiveSatPerPhDay * (1 + nicehashFeePct / 100)
+    nicehashSwitchBasisSatPerPhDay !== null
+      ? nicehashSwitchBasisSatPerPhDay * (1 + nicehashFeePct / 100)
       : null;
 
   const selection = selectProvider(
@@ -175,6 +235,8 @@ export function evaluateProviders(inputs: EvaluateProvidersInputs): EvaluateProv
     braiinsCostSatPerPhDay,
     nicehashCostSatPerPhDay,
     nicehashFillLineSatPerPhDay,
+    nicehashSwitchBasisSatPerPhDay,
+    nicehashRationed,
     selection,
   };
 }
