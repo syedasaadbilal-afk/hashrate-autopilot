@@ -85,6 +85,27 @@ export interface StatsResponse {
    */
   readonly avg_cost_per_ph_sat_per_ph_day: number | null;
   /**
+   * #F (v1.18.14): TRUE cost per Ocean-CREDITED PH/day. Same spend, but divided
+   * by what Ocean actually credited instead of what the venues claim to have
+   * delivered. This is the economically real number: on 2026-07-27 the venues
+   * reported 2.43 PH/s while Ocean credited 1.37 PH/s, so the headline cost of
+   * 52,004 understated the true ~92,000 by ~44%. Null when Ocean coverage is
+   * missing for the window.
+   */
+  readonly avg_cost_per_ocean_ph_sat_per_ph_day: number | null;
+  /**
+   * #F: vs-hashprice computed on Ocean-credited delivery (the honest break-even
+   * comparison). Positive = paying above what the credited hashrate earns.
+   */
+  readonly avg_ocean_cost_vs_hashprice_sat_per_ph_day: number | null;
+  /**
+   * #C/#F: delivery variance % = (paid_for - ocean_credited) / paid_for x 100,
+   * over the window. Positive = we paid for more hashrate than Ocean credited
+   * (rejections / routing / stale / latency). Signed: negative means Ocean
+   * credited MORE than we were billed for (over-delivery). Null without coverage.
+   */
+  readonly ocean_delivery_variance_pct: number | null;
+  /**
    * Average controller-intent overpay above fillable_ask (#164).
    * Time-weighted mean of (our_bid - fillable_ask) across every tick
    * in the window where both values are present. Reflects what the
@@ -191,6 +212,10 @@ export async function registerStatsRoute(
         total_ph_hours: metrics.total_ph_hours,
         avg_overpay_vs_hashprice_sat_per_ph_day: metrics.avg_overpay_vs_hashprice_sat_per_ph_day,
         avg_cost_per_ph_sat_per_ph_day: metrics.avg_cost_per_ph_sat_per_ph_day,
+        // #F: Ocean-credited economics (the honest cost + variance).
+        avg_cost_per_ocean_ph_sat_per_ph_day: metrics.avg_cost_per_ocean_ph_sat_per_ph_day,
+        avg_ocean_cost_vs_hashprice_sat_per_ph_day: metrics.avg_ocean_cost_vs_hashprice_sat_per_ph_day,
+        ocean_delivery_variance_pct: metrics.ocean_delivery_variance_pct,
         avg_intent_overpay_sat_per_ph_day: metrics.avg_intent_overpay_sat_per_ph_day,
         avg_settled_overpay_sat_per_ph_day: metrics.avg_settled_overpay_sat_per_ph_day,
         avg_time_to_fill_ms: avgFillMs,
@@ -218,6 +243,9 @@ async function computeMetrics(
   total_ph_hours: number | null;
   avg_overpay_vs_hashprice_sat_per_ph_day: number | null;
   avg_cost_per_ph_sat_per_ph_day: number | null;
+  avg_cost_per_ocean_ph_sat_per_ph_day: number | null;
+  avg_ocean_cost_vs_hashprice_sat_per_ph_day: number | null;
+  ocean_delivery_variance_pct: number | null;
   avg_intent_overpay_sat_per_ph_day: number | null;
   avg_settled_overpay_sat_per_ph_day: number | null;
   tick_count: number;
@@ -444,7 +472,26 @@ async function computeMetrics(
       CAST(SUM(CASE WHEN nh_valid THEN nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_ehdays,
       CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN nh_delta ELSE 0 END) AS REAL) AS nh_spend_hp,
       CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_ehdays_hp,
-      CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN hashprice * nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_hp_ehdays
+      CAST(SUM(CASE WHEN nh_valid AND hashprice IS NOT NULL THEN hashprice * nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_hp_ehdays,
+
+      -- #F: OCEAN-CREDITED EH-days over the SAME ticks that contributed spend, so
+      -- the cost-per-Ocean-PH ratio has a matched numerator/denominator. A tick
+      -- counts when it produced billable spend on either venue AND has an Ocean
+      -- reading. ocean_hashrate_ph is PH/s -> EH-days = ph/1000 x dur/86_400_000.
+      CAST(SUM(CASE WHEN (valid AND our_bid > 0) OR nh_valid
+          THEN CASE WHEN ocean_hashrate_ph IS NOT NULL
+            THEN ocean_hashrate_ph * dur / (1000.0 * 86400000.0) ELSE 0 END
+          ELSE 0 END) AS REAL) AS ocean_ehdays,
+      -- Spend on exactly those Ocean-covered ticks (so we never divide a full
+      -- window's spend by a partially-covered Ocean denominator).
+      CAST(SUM(CASE WHEN ocean_hashrate_ph IS NOT NULL AND valid AND our_bid > 0 THEN delta ELSE 0 END) AS REAL) AS br_spend_ocean,
+      CAST(SUM(CASE WHEN ocean_hashrate_ph IS NOT NULL AND nh_valid THEN nh_delta ELSE 0 END) AS REAL) AS nh_spend_ocean,
+      -- Venue-claimed EH-days on the same Ocean-covered ticks, for the variance.
+      CAST(SUM(CASE WHEN ocean_hashrate_ph IS NOT NULL AND valid AND our_bid > 0 THEN CAST(delta AS REAL) / our_bid ELSE 0 END) AS REAL) AS br_ehdays_ocean,
+      CAST(SUM(CASE WHEN ocean_hashrate_ph IS NOT NULL AND nh_valid THEN nh_delivered_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS nh_ehdays_ocean,
+      -- Hashprice weighted by Ocean-credited EH-days, for the honest vs-hashprice.
+      CAST(SUM(CASE WHEN ocean_hashrate_ph IS NOT NULL AND hashprice IS NOT NULL AND ((valid AND our_bid > 0) OR nh_valid)
+          THEN hashprice * ocean_hashrate_ph * dur / (1000.0 * 86400000.0) ELSE 0 END) AS REAL) AS ocean_hp_ehdays
     FROM (
       SELECT
         tick_at,
@@ -544,6 +591,9 @@ async function computeMetrics(
       total_ph_hours: null,
       avg_overpay_vs_hashprice_sat_per_ph_day: null,
       avg_cost_per_ph_sat_per_ph_day: null,
+      avg_cost_per_ocean_ph_sat_per_ph_day: null,
+      avg_ocean_cost_vs_hashprice_sat_per_ph_day: null,
+      ocean_delivery_variance_pct: null,
       avg_intent_overpay_sat_per_ph_day: null,
       avg_settled_overpay_sat_per_ph_day: null,
     };
@@ -574,8 +624,29 @@ async function computeMetrics(
     blendedVsHashpriceEhDay = blendedAvgCostHp - blendedHashprice;
   }
 
+  // #F: the honest, Ocean-credited economics. Same spend, divided by what Ocean
+  // ACTUALLY credited rather than what the venues claim to have delivered.
+  const oceanEhdays = num('ocean_ehdays');
+  const spendOnOceanTicks = num('br_spend_ocean') + num('nh_spend_ocean');
+  const claimedEhdaysOceanTicks = num('br_ehdays_ocean') + num('nh_ehdays_ocean');
+  const avgCostPerOceanEhDay = oceanEhdays > 0 ? spendOnOceanTicks / oceanEhdays : null;
+  const oceanVsHashpriceEhDay =
+    avgCostPerOceanEhDay !== null && oceanEhdays > 0
+      ? avgCostPerOceanEhDay - num('ocean_hp_ehdays') / oceanEhdays
+      : null;
+  // Signed variance: positive = paid for more than Ocean credited (loss).
+  const oceanVariancePct =
+    claimedEhdaysOceanTicks > 0
+      ? ((claimedEhdaysOceanTicks - oceanEhdays) / claimedEhdaysOceanTicks) * 100
+      : null;
+
   return {
     tick_count: tickCount,
+    avg_cost_per_ocean_ph_sat_per_ph_day:
+      avgCostPerOceanEhDay !== null ? avgCostPerOceanEhDay / EH_PER_PH : null,
+    avg_ocean_cost_vs_hashprice_sat_per_ph_day:
+      oceanVsHashpriceEhDay !== null ? oceanVsHashpriceEhDay / EH_PER_PH : null,
+    ocean_delivery_variance_pct: oceanVariancePct,
     // #290: percentages against wall clock; null when the window has
     // no ticks at all (matches the previous no-data behavior).
     uptime_pct: tickCount > 0 ? pctOfWallClock(r['uptime_up_ms'] !== null ? Number(r['uptime_up_ms']) : 0) : null,

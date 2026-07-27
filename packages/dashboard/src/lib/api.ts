@@ -555,6 +555,7 @@ export interface AppConfig {
   provider_switch_sustained_window_minutes: number;
   nicehash_min_delivered_ph: number;
   nicehash_deep_liquidity_eh: number;
+  nicehash_fill_skip_bottom_eh: number;
   braiins_fee_pct: number;
   nicehash_fee_pct: number;
   nicehash_target_hashrate_ph: number;
@@ -1223,6 +1224,12 @@ export interface StatsResponse {
   total_ph_hours: number | null;
   avg_overpay_vs_hashprice_sat_per_ph_day: number | null;
   avg_cost_per_ph_sat_per_ph_day: number | null;
+  /** #F: true cost per Ocean-CREDITED PH/day (spend / Ocean-credited delivery). */
+  avg_cost_per_ocean_ph_sat_per_ph_day: number | null;
+  /** #F: vs-hashprice computed on Ocean-credited delivery (honest break-even). */
+  avg_ocean_cost_vs_hashprice_sat_per_ph_day: number | null;
+  /** #C/#F: signed % of paid-for hashrate Ocean did not credit. */
+  ocean_delivery_variance_pct: number | null;
   /** #164: time-weighted mean of (our_bid - fillable_ask) over the window. */
   avg_intent_overpay_sat_per_ph_day: number | null;
   /** #164: delta-weighted mean of (effective_rate - fillable_ask) over the window. */

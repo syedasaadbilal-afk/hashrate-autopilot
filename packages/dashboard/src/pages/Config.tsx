@@ -243,6 +243,14 @@ function useSections(): Section[] {
             help: t`Set this in "Hashrate targets" (next to the Braiins target). Repeated here for context.`,
           },
           {
+            // #E: cumulative bottom-skip - the "ignore the lowest N of supply" lever.
+            key: 'nicehash_fill_skip_bottom_eh',
+            label: t`NiceHash fill-line bottom skip`,
+            kind: 'decimal',
+            unit: 'EH/s',
+            help: t`When anchoring the NiceHash fill line, ignore this much CUMULATIVE supply from the cheap end of the book before counting toward your target. Use this to keep the anchor off the thin, volatile bottom slice (e.g. 0.1 = skip the cheapest 0.1 EH/s of supply). Different from the dust floor above, which drops individual trickle ORDERS; this one skips a share of total supply however it's split. 0 = off.`,
+          },
+          {
             // #55: never bid above the price where a real block of supply exists.
             key: 'nicehash_deep_liquidity_eh',
             label: t`NiceHash deep-liquidity threshold`,

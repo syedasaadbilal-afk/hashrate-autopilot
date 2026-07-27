@@ -31,6 +31,7 @@ export type DashboardTileId =
   | 'avg_ocean'
   | 'avg_cost_delivered'
   | 'avg_cost_vs_hashprice'
+  | 'ocean_variance'
   | 'uptime_bid_coverage'
   | 'uptime_delivery_when_bid_active'
   | 'hashrate_target'
@@ -76,6 +77,7 @@ export const TILE_CATALOGUE: ReadonlyArray<DashboardTileMeta> = [
   { id: 'avg_ocean', group: 'Hashrate', labelKey: 'avg ocean' },
   { id: 'avg_cost_delivered', group: 'Pricing', labelKey: 'avg cost delivered' },
   { id: 'avg_cost_vs_hashprice', group: 'Pricing', labelKey: 'avg cost vs hashprice' },
+  { id: 'ocean_variance', group: 'Pricing', labelKey: 'paid vs ocean variance' },
 
   // Uptime decomposition (#254).
   { id: 'uptime_bid_coverage', group: 'Uptime', labelKey: 'bid coverage' },

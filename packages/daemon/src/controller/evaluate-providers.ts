@@ -68,6 +68,13 @@ export interface EvaluateProvidersInputs {
    * thin scraps and to trigger the Braiins supplement. 0/undefined disables it.
    */
   readonly nicehashDeepLiquidityEh?: number;
+  /**
+   * #E: cumulative bottom-skip (EH/s) for the depth-aware fill line. After the
+   * per-order dust floor, discard this much CUMULATIVE delivered supply from the
+   * cheap end before counting toward the target, so the anchor sits above the
+   * thin/volatile bottom slice of the book. 0/undefined = off.
+   */
+  readonly nicehashFillSkipBottomEh?: number;
 
   /** Shared overpay cushion, sat/PH/day (config.overpay_sat_per_eh_day ÷ 1000). */
   readonly overpaySatPerPhDay: number;
@@ -174,9 +181,15 @@ export function evaluateProviders(inputs: EvaluateProvidersInputs): EvaluateProv
     // is (not to a cheaper order catching only a trickle). Falls back to the
     // cheapest-any-fill rule when no target is known.
     const targetPh = inputs.nicehashTargetPh ?? 0;
+    // #E: BOTH filters now apply to the depth path (which is the path that
+    // actually runs whenever a target is set - previously the dust floor was
+    // only wired into the fallback, so the config knob silently did nothing).
     const fillLine =
       targetPh > 0
-        ? cheapestFillableForDepth(orders, targetPh, inputs.nicehashMarketFactor)
+        ? cheapestFillableForDepth(orders, targetPh, inputs.nicehashMarketFactor, {
+            minDeliveredPh: inputs.nicehashMinDeliveredPh ?? 0,
+            skipBottomPh: (inputs.nicehashFillSkipBottomEh ?? 0) * 1000,
+          })
         : lowestFillingPrice(orders, inputs.nicehashMarketFactor, {
             minDeliveredPh: inputs.nicehashMinDeliveredPh ?? 0,
           });

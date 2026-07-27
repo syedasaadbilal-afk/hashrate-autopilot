@@ -154,6 +154,47 @@ describe('decideNicehash - price tracking obeys NiceHash step/cooldown', () => {
     expect(actions.some((a) => a.kind === 'EDIT_PRICE')).toBe(false);
   });
 
+  it('#B: does NOT trim the price while delivering on target', () => {
+    // The Jul 27 incident: order at 48,000 delivering the full target while the
+    // modelled fill line said 47,259 (want -741). Trimming collapsed delivery
+    // 2.01 -> 0.24 PH within 6 min. On-target => hold.
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 47_259,
+      onTarget: true,
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    expect(actions.some((a) => a.kind === 'EDIT_PRICE')).toBe(false);
+  });
+
+  it('#B: still trims when NOT delivering on target (overpay is real slack)', () => {
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 47_259,
+      onTarget: false,
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    const edit = actions.find((a) => a.kind === 'EDIT_PRICE')!;
+    expect(edit.submitPriceSatPerPhDay).toBe(47_800); // one capped -200 step
+  });
+
+  it('#B: never trims below the empirical floor (last price known to fill)', () => {
+    // Model wants 47,259 but 47,900 is the last price that actually delivered
+    // target -> the decrease clamps at the floor, not the model.
+    const actions = decideNicehash({
+      ...BASE,
+      providerActive: true,
+      desiredPriceSatPerPhDay: 47_259,
+      minPriceFloorSatPerPhDay: 47_900,
+      order: liveOrder({ remainingBtc: 0.01, lastDecreaseAtMs: null }),
+    });
+    const edit = actions.find((a) => a.kind === 'EDIT_PRICE');
+    // current 48,000 - floor 47,900 = 100 < 200 deadband -> no wasteful edit.
+    expect(edit).toBeUndefined();
+  });
+
   it('#55: does NOT raise while the market is rationed, even at/below the fill line', () => {
     // Same setup as the RAISES case (order at the fill line), but rationed=true:
     // the extra supply isn't there, so we hold the price and let Braiins supplement

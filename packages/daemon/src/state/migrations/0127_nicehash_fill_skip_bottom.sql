@@ -1,0 +1,13 @@
+-- #E (v1.18.14): cumulative bottom-skip (EH/s) for the NiceHash depth-aware fill
+-- line. After the per-order dust floor (nicehash_min_delivered_ph) is applied,
+-- the fill-line walk discards this much CUMULATIVE delivered supply from the
+-- cheap end of the book before counting toward our target - so the anchor sits
+-- above the thin, volatile bottom slice instead of on scraps.
+--
+-- Distinct from the per-order dust floor: that one drops individual trickle
+-- orders; this one drops the cheapest N of TOTAL supply regardless of how it is
+-- split across orders (the operator's "ignore the lowest ~0.1 EH / 1%" lever).
+--
+-- Default 0 = off (behaviour unchanged until the operator sets it).
+-- Additive + NOT NULL DEFAULT, so existing rows read the default.
+ALTER TABLE config ADD COLUMN nicehash_fill_skip_bottom_eh REAL NOT NULL DEFAULT 0;

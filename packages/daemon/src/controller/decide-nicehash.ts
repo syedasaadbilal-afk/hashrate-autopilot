@@ -118,6 +118,22 @@ export interface DecideNicehashInputs {
    * supplements the shortfall (#56). DECREASES and REFILLS are unaffected.
    */
   readonly rationed?: boolean;
+  /**
+   * #B (v1.18.14): the order is currently delivering AT/NEAR our target. When
+   * true we suppress tracking DECREASES entirely: a decrease only sheds overpay
+   * we don't need, and the modelled fill line under-reads a thin/churning book.
+   * Live evidence (Jul 27): a -200 trim while delivering the full 2.01 PH
+   * collapsed delivery to 0.24 PH within 6 minutes, then needed an increase to
+   * recover - a pure loss. PARK is unaffected (that must reach below the fill
+   * line); increases are unaffected.
+   */
+  readonly onTarget?: boolean;
+  /**
+   * #B: soft floor (sat/PH/day) - the last price empirically known to deliver
+   * target. Tracking decreases never go below it, because a level that fills is
+   * better evidence than a modelled fill line that reads lower. PARK bypasses it.
+   */
+  readonly minPriceFloorSatPerPhDay?: number;
 }
 
 export interface NicehashOrderAction {
@@ -229,9 +245,20 @@ export function decideNicehash(inputs: DecideNicehashInputs): readonly NicehashO
     //     so a rising fill line doesn't fire a tiny per-tick increase that would
     //     keep the decrease lockout permanently reset. (overpay <= 0 -> unknown
     //     cushion, fall back to always raising.)
+    // #B: the price we're willing to trim TO, never below a level empirically
+    // known to fill. A modelled fill line that reads lower than a price we're
+    // actually delivering at is the model being wrong about a thin book.
+    const decreaseTarget =
+      inputs.minPriceFloorSatPerPhDay != null
+        ? Math.max(desired, inputs.minPriceFloorSatPerPhDay)
+        : desired;
+
     let shouldEdit = false;
-    if (current - desired >= decreaseDeadband) {
-      shouldEdit = true;
+    if (current - decreaseTarget >= decreaseDeadband) {
+      // #B: suppress the trim entirely while we're delivering on target - the
+      // only thing a decrease buys is shedding overpay, and the downside
+      // (losing the fill) is far larger than the saving.
+      shouldEdit = !inputs.onTarget;
     } else if (current < desired) {
       // #55: never chase the price UP while the market is rationed - the extra
       // supply isn't there, so a raise just burns the lockout and overpays.
@@ -241,7 +268,9 @@ export function decideNicehash(inputs: DecideNicehashInputs): readonly NicehashO
     if (shouldEdit) {
       const edit = evaluateNicehashPriceEdit({
         currentPriceSatPerPhDay: current,
-        desiredPriceSatPerPhDay: desired,
+        // Decreases clamp at the empirical floor (#B); increases use `desired`
+        // unchanged (decreaseTarget >= desired only matters on the way down).
+        desiredPriceSatPerPhDay: current > desired ? decreaseTarget : desired,
         lastDecreaseAtMs: order.lastDecreaseAtMs,
         now: inputs.now,
         ...(inputs.editConstraints ? { constraints: inputs.editConstraints } : {}),

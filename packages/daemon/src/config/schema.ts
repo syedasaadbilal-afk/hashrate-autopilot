@@ -600,6 +600,8 @@ export const AppConfigSchema = z.object({
    * shortfall. Default 1 EH. 0 disables the rationing check.
    */
   nicehash_deep_liquidity_eh: z.number().nonnegative().default(1),
+  /** #E: cumulative bottom-skip (EH/s) for the depth-aware fill line. 0 = off. */
+  nicehash_fill_skip_bottom_eh: z.number().nonnegative().default(0),
   /** Braiins fee % folded into the switch comparison (0 during beta). */
   braiins_fee_pct: z.number().nonnegative().default(0),
   /** NiceHash marketplace fee % folded into the switch comparison. */
@@ -765,6 +767,7 @@ export const APP_CONFIG_DEFAULTS: Omit<
   provider_switch_sustained_window_minutes: 10,
   nicehash_min_delivered_ph: 0.1,
   nicehash_deep_liquidity_eh: 1,
+  nicehash_fill_skip_bottom_eh: 0,
   braiins_fee_pct: 0,
   nicehash_fee_pct: 0,
   nicehash_target_hashrate_ph: 1,

@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-07-27 (honest economics + live-observation fixes)
+
+### `[Release]` v1.18.14
+
+Fixes found by running v1.18.13 live for a day. Headline: the cost tiles were measuring the wrong denominator, so NiceHash looked far cheaper than it actually was. Folds log items #A, #B, #C/#F, #D, #E.
+
+### `[Fix]` **Cost is now measured on OCEAN-CREDITED delivery, not venue-claimed (#C/#F)**
+
+`AVG COST DELIVERED` and `AVG COST VS HASHPRICE` divided spend by `nicehash_delivered_ph` / the Braiins counter - i.e. by what the venues *claim* they delivered. Live on 2026-07-27 the venues reported 2.43 PH/s while Ocean credited 1.37 PH/s (a ~44% gap), so the tile read 52,004 sat/PH/day when the true cost per useful PH was ~92,000, and vs-hashprice read +2,051 when the honest figure was ~+42,000 - i.e. the dashboard showed a mild premium while NiceHash was plausibly uneconomic. Both tiles now compute `spend / Ocean-credited EH-days` over Ocean-covered ticks (matched numerator/denominator), falling back to the venue-claimed figure only when Ocean coverage is missing. Adds `avg_cost_per_ocean_ph_sat_per_ph_day` and `avg_ocean_cost_vs_hashprice_sat_per_ph_day` to `/api/stats`.
+
+### `[Feature]` "paid vs ocean variance" tile (#C)
+
+Signed `(paid_for - ocean_credited) / paid_for x 100` over the window - the share of purchased hashrate Ocean never credited. Colour-coded (green <5%, amber <10%, red >=10%). Negative means Ocean credited more than we were billed for. This is the operator-facing leak detector; it also stands in for the "implied NiceHash rejection" deferred from #51, since NiceHash exposes no per-order reject counter.
+
+### `[Fix]` Price oscillation: no trimming while delivering on target (#B)
+
+Root-caused from the 10:00-10:12 log on 2026-07-27. At 49,540 the order was delivering the **full 2.01 PH target**, yet the daemon still cut -200 toward the modelled fill line (~48,800) to shave overpay. Delivery collapsed 2.01 -> 0.24 PH/s over six minutes, forcing a +189 recovery increase through the 10-minute decrease lockout - the "runs up aggressively" the operator reported was the *recovery*, not the cause. `decideNicehash` now suppresses tracking decreases while `onTarget` (delivered >= 90% of target), and never decreases below `minPriceFloorSatPerPhDay` - the last price empirically known to fill. Observed delivery outranks a modelled fill line that under-reads a thin, churning book.
+
+### `[Fix]` Braiins supplement now actually triggers (#A)
+
+The v1.18.13 supplement keyed off the deep-liquidity detector ("is there >=1 EH of supply anywhere?"), which in a liquid book is almost always true - so a NiceHash order delivering 0.42 PH/s never armed it. It now triggers on NiceHash's **actual delivered hashrate**: ON below 1.0 PH/s, OFF once recovered to 1.5 PH/s (hysteresis band so a bouncing reading can't flap the Braiins bid); rationing still forces it on. The NiceHash limit is **no longer throttled to 1 PH** during a supplement - throttling saved nothing (NiceHash bills only for delivered hashrate) and capped/blinded recovery; Braiins simply tops up the shortfall.
+
+### `[Fix]` NiceHash fill-line dust floor was silently ignored (#E)
+
+`nicehash_min_delivered_ph` was only wired into the `lowestFillingPrice` fallback, which never runs once a target hashrate is set (i.e. always). So `cheapestFillableForDepth` summed every delivering order from the cheapest up - including 0.1-0.8 PH trickles - and scraps set the fill line. The floor is now threaded into the depth path.
+
+### `[Feature]` NiceHash fill-line bottom skip (#E)
+
+New `nicehash_fill_skip_bottom_eh` (EH/s, default 0 = off): after the per-order dust floor, discard this much **cumulative** delivered supply from the cheap end before counting toward the target. The two filters stack (per-order filter -> cumulative skip -> accumulate), which is what the operator actually wanted from "ignore the lowest ~1% of supply" - the existing field is per-ORDER, so setting it to 100 PH would have discarded nearly the whole book once #E made it effective. Migration 0127.
+
+### `[Fix]` Timeline: NiceHash rows show speed (#D)
+
+The limit is now stamped on every NiceHash bid_event, not just CREATE. Braiins rows back-fill speed from their CREATE_BID row, but an order created before event logging existed has none, so every edit/park rendered "-".
+
 ## 2026-07-26 (dual-provider intelligence batch)
 
 ### `[Release]` v1.18.13

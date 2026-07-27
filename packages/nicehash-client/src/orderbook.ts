@@ -194,6 +194,23 @@ export function cheapestFillableForDepth(
   orders: readonly NiceHashOrderBookOrder[] | undefined,
   targetPh: number,
   marketFactor: number,
+  opts: {
+    /**
+     * #E: PER-ORDER dust floor (PH/s). Skip any INDIVIDUAL order delivering at or
+     * below this - a trickle order catching a sliver must not anchor the fill
+     * line. Was previously only honoured in the `lowestFillingPrice` fallback,
+     * which never ran once a target was set, so the config knob did nothing.
+     */
+    minDeliveredPh?: number;
+    /**
+     * #E: CUMULATIVE bottom skip (PH/s). After the per-order filter, walk the
+     * book cheapest->dearest and discard the first N PH/s of cumulative supply
+     * before counting toward the target, so the anchor sits above the thin,
+     * volatile cheap tail. 0 = off. (Distinct from the per-order floor: this is
+     * the "ignore the lowest ~0.1 EH of supply" lever.)
+     */
+    skipBottomPh?: number;
+  } = {},
 ): FillableResult {
   const empty: FillableResult = {
     priceSatPerEhDay: null,
@@ -207,11 +224,26 @@ export function cheapestFillableForDepth(
   const parsed = parseOrders(orders, marketFactor).sort((a, b) => a.priceBtc - b.priceBtc);
   if (parsed.length === 0) return empty;
 
+  const dustFloorPh = opts.minDeliveredPh ?? 0;
+  let toSkipPh = opts.skipBottomPh ?? 0;
+
   let cumulative = 0;
   let lastDeliveringPriceBtc: number | null = null;
   for (const order of parsed) {
     if (order.deliveredPh <= 0) continue;
-    cumulative += order.deliveredPh;
+    // Filter 1: per-order dust floor.
+    if (dustFloorPh > 0 && order.deliveredPh <= dustFloorPh) continue;
+    // Filter 2: cumulative bottom skip - consume this order's supply into the
+    // skip budget before any of it counts toward the target. Partially-consumed
+    // orders contribute only their remainder.
+    let contribution = order.deliveredPh;
+    if (toSkipPh > 0) {
+      const consumed = Math.min(toSkipPh, contribution);
+      toSkipPh -= consumed;
+      contribution -= consumed;
+      if (contribution <= 0) continue;
+    }
+    cumulative += contribution;
     lastDeliveringPriceBtc = order.priceBtc;
     if (cumulative >= targetPh) {
       return toResult(order.priceBtc, marketFactor, false, cumulative);

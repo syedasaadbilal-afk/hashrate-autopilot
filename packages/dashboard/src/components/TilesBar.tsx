@@ -293,28 +293,61 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
     value: denomination.formatHashrate(stats?.avg_ocean_hashrate_ph ?? null, intlLocale),
     tooltip: t`Duration-weighted average of the hashrate Ocean credits to our payout address over the selected range. A sustained gap below Avg Braiins / Avg Datum means the pool isn't crediting work we think we delivered.`,
   }),
-  avg_cost_delivered: ({ stats, intlLocale, denomination }) => ({
-    value:
-      stats?.avg_cost_per_ph_sat_per_ph_day != null
-        ? denomination.formatSatPerPhDay(Math.round(stats.avg_cost_per_ph_sat_per_ph_day), intlLocale)
-        : EM_DASH,
-    tooltip: t`Average effective rate over the selected range - what Braiins actually charged per PH/day delivered. Spend-weighted; zero-delivery periods contribute zero to both sides.`,
-  }),
-  avg_cost_vs_hashprice: ({ stats, intlLocale, denomination }) => ({
-    value:
-      stats?.avg_overpay_vs_hashprice_sat_per_ph_day != null
-        ? denomination.formatSatPerPhDay(Math.round(stats.avg_overpay_vs_hashprice_sat_per_ph_day), intlLocale)
-        : EM_DASH,
-    tooltip: t`(avg cost delivered) minus the spend-weighted average hashprice during periods we were actually billed, computed over the selected range. Negative = paid below break-even.`,
+  // #F (v1.18.14): headline the OCEAN-CREDITED cost - what we paid per PH that
+  // Ocean actually credited. The old figure divided spend by venue-CLAIMED
+  // delivery, which on 2026-07-27 read 52,004 while the true cost was ~92,000
+  // (venues claimed 2.43 PH/s, Ocean credited 1.37). Falls back to the
+  // venue-claimed number only when Ocean coverage is missing.
+  avg_cost_delivered: ({ stats, intlLocale, denomination }) => {
+    const ocean = stats?.avg_cost_per_ocean_ph_sat_per_ph_day ?? null;
+    const claimed = stats?.avg_cost_per_ph_sat_per_ph_day ?? null;
+    const v = ocean ?? claimed;
+    return {
+      value: v != null ? denomination.formatSatPerPhDay(Math.round(v), intlLocale) : EM_DASH,
+      tooltip:
+        ocean != null
+          ? t`TRUE cost per PH/day that OCEAN CREDITED, over the selected range: total spend on both venues divided by the hashrate Ocean actually credited. This is the economically real number - the venue-reported figure (${claimed != null ? Math.round(claimed).toLocaleString() : '-'}) divides the same spend by what NiceHash/Braiins CLAIM to have delivered, which ignores hashrate that never lands at the pool.`
+          : t`Average effective rate over the selected range - what the venues charged per PH/day they claim to have delivered. (Ocean-credited cost unavailable for this window.)`,
+    };
+  },
+  avg_cost_vs_hashprice: ({ stats, intlLocale, denomination }) => {
+    // #F: compare against Ocean-credited delivery so break-even is honest.
+    const oceanVs = stats?.avg_ocean_cost_vs_hashprice_sat_per_ph_day ?? null;
+    const claimedVs = stats?.avg_overpay_vs_hashprice_sat_per_ph_day ?? null;
+    const v = oceanVs ?? claimedVs;
+    return {
+    value: v != null ? denomination.formatSatPerPhDay(Math.round(v), intlLocale) : EM_DASH,
+    tooltip:
+      oceanVs != null
+        ? t`Cost per OCEAN-CREDITED PH/day minus the average hashprice over the same period. Positive = paying MORE than the credited hashrate earns (losing money). Uses Ocean-credited delivery, not venue-claimed, so it reflects real economics.`
+        : t`(avg cost delivered) minus the spend-weighted average hashprice during periods we were actually billed, computed over the selected range. Negative = paid below break-even.`,
     color:
-      stats?.avg_overpay_vs_hashprice_sat_per_ph_day == null
+      v == null
         ? 'text-slate-100'
-        : stats.avg_overpay_vs_hashprice_sat_per_ph_day < 0
+        : v < 0
           ? 'text-emerald-300'
-          : stats.avg_overpay_vs_hashprice_sat_per_ph_day > 0
+          : v > 0
             ? 'text-red-300'
             : 'text-slate-100',
-  }),
+    };
+  },
+  // #C/#F: signed delivery variance - how much of what we PAID FOR never got
+  // credited by Ocean. Positive = loss (rejections / routing / stale / latency).
+  ocean_variance: ({ stats, intlLocale }) => {
+    const v = stats?.ocean_delivery_variance_pct ?? null;
+    return {
+      value: fmtPct(v, 1, intlLocale),
+      tooltip: t`Share of the hashrate we PAID FOR (both venues, from settlement counters) that Ocean did NOT credit, over the selected range. Positive = paying for hashrate that never lands at the pool (rejections, routing, stale shares, latency). Negative = Ocean credited more than we were billed for. Sustained double-digit values mean the venue-reported delivery is overstating what you actually receive.`,
+      color:
+        v == null
+          ? 'text-slate-100'
+          : v >= 10
+            ? 'text-red-300'
+            : v >= 5
+              ? 'text-amber-300'
+              : 'text-emerald-300',
+    };
+  },
   uptime_bid_coverage: ({ stats, intlLocale }) => ({
     value: fmtPct(stats?.uptime_bid_coverage_pct ?? null, 1, intlLocale),
     tooltip: t`% of the window with an active Braiins bid. Low = orderbook didn't cooperate ("expected" downtime - nothing matched your criteria), not a failure on your side.`,
@@ -670,6 +703,7 @@ function labelFor(id: DashboardTileId): string {
     case 'avg_ocean': return t`avg ocean`;
     case 'avg_cost_delivered': return t`avg cost delivered`;
     case 'avg_cost_vs_hashprice': return t`avg cost vs hashprice`;
+    case 'ocean_variance': return t`paid vs ocean variance`;
     case 'uptime_bid_coverage': return t`bid coverage`;
     case 'uptime_delivery_when_bid_active': return t`delivery while bidding`;
     case 'hashrate_target': return t`hashrate target`;

@@ -177,6 +177,54 @@ describe('lowestFillingPrice (confirmed rule)', () => {
   });
 });
 
+describe('#E cheapestFillableForDepth filters (dust floor + cumulative skip)', () => {
+  // Book: 0.05 PH dust @40k, 0.6 PH @45k, 1.0 PH @49k, 2.0 PH @50k.
+  const book = [
+    order(4.0e-7, 50), // 0.05 PH - dust
+    order(4.5e-7, 600), // 0.6 PH
+    order(4.9e-7, 1000), // 1.0 PH
+    order(5.0e-7, 2000), // 2.0 PH
+  ];
+
+  it('without filters, dust counts toward depth (the pre-fix behaviour)', () => {
+    // 0.05 + 0.6 + 1.0 = 1.65 >= 1.5 target at the 49k order.
+    expect(cheapestFillableForDepth(book, 1.5, MF).priceSatPerPhDay).toBeCloseTo(49_000, 1);
+  });
+
+  it('per-order dust floor skips the trickle order entirely', () => {
+    // Dust (0.05) excluded -> 0.6 + 1.0 = 1.6 >= 1.5 still at 49k, but the
+    // cumulative excludes the dust contribution.
+    const r = cheapestFillableForDepth(book, 1.5, MF, { minDeliveredPh: 0.1 });
+    expect(r.priceSatPerPhDay).toBeCloseTo(49_000, 1);
+    expect(r.cumulativePh).toBeCloseTo(1.6, 6);
+  });
+
+  it('cumulative bottom-skip pushes the anchor above the thin cheap tail', () => {
+    // Skip the cheapest 1.0 PH of cumulative supply: 0.05+0.6 = 0.65 consumed,
+    // then 0.35 of the 49k order is consumed too -> remaining 0.65 counts.
+    // 0.65 < 1.5, so we continue into the 50k order -> anchor 50,000.
+    const r = cheapestFillableForDepth(book, 1.5, MF, { skipBottomPh: 1.0 });
+    expect(r.priceSatPerPhDay).toBeCloseTo(50_000, 1);
+  });
+
+  it('both filters stack (dust dropped first, then the cumulative skip)', () => {
+    // Dust gone -> 0.6 @45k, 1.0 @49k, 2.0 @50k. Skip 0.6 -> the 45k order is
+    // fully consumed; then 1.0 @49k counts, still < 1.5 -> anchor at 50,000.
+    const r = cheapestFillableForDepth(book, 1.5, MF, {
+      minDeliveredPh: 0.1,
+      skipBottomPh: 0.6,
+    });
+    expect(r.priceSatPerPhDay).toBeCloseTo(50_000, 1);
+  });
+
+  it('filters are off by default so existing behaviour is unchanged', () => {
+    expect(cheapestFillableForDepth(book, 1.5, MF, {}).priceSatPerPhDay).toBeCloseTo(
+      cheapestFillableForDepth(book, 1.5, MF).priceSatPerPhDay!,
+      6,
+    );
+  });
+});
+
 describe('deepLiquidityPrice (#55 rationing detector)', () => {
   it('returns the cheapest price whose cumulative delivered supply reaches the deep threshold', () => {
     // threshold 1 PH: 0.5 + 0.8 = 1.3 PH cumulative at the 45,000 order.

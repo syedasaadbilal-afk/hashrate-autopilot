@@ -620,8 +620,8 @@ msgid "Average effective rate over the selected chart range - what Braiins actua
 msgstr "Average effective rate over the selected chart range - what Braiins actually charged per PH/day delivered. Computed as the delta-weighted harmonic mean of the bid: SUM(Δconsumed_sat) ÷ SUM(Δconsumed_sat ÷ bid). Under pay-your-bid the bid IS the price, so when the bid is constant across the window this equals the bid exactly; when the bid varies (mid-window edits) it's the spend-weighted average. Periods of zero delivery contribute zero to both sides and don't skew the result. For the current bid price see the NEXT ACTION panel."
 
 #: src/components/TilesBar.tsx
-msgid "Average effective rate over the selected range - what Braiins actually charged per PH/day delivered. Spend-weighted; zero-delivery periods contribute zero to both sides."
-msgstr "Average effective rate over the selected range - what Braiins actually charged per PH/day delivered. Spend-weighted; zero-delivery periods contribute zero to both sides."
+msgid "Average effective rate over the selected range - what the venues charged per PH/day they claim to have delivered. (Ocean-credited cost unavailable for this window.)"
+msgstr "Average effective rate over the selected range - what the venues charged per PH/day they claim to have delivered. (Ocean-credited cost unavailable for this window.)"
 
 #: src/components/TilesBar.tsx
 msgid "Average overpay above the fillable ask on the bid price the controller actually had live (post-edit-deadband). Measures what the operator paid for, separate from what the controller intended."
@@ -1486,6 +1486,10 @@ msgstr "Copy JSON"
 #: src/pages/Status.tsx
 msgid "copy URL"
 msgstr "copy URL"
+
+#: src/components/TilesBar.tsx
+msgid "Cost per OCEAN-CREDITED PH/day minus the average hashprice over the same period. Positive = paying MORE than the credited hashrate earns (losing money). Uses Ocean-credited delivery, not venue-claimed, so it reflects real economics."
+msgstr "Cost per OCEAN-CREDITED PH/day minus the average hashprice over the same period. Positive = paying MORE than the credited hashrate earns (losing money). Uses Ocean-credited delivery, not venue-claimed, so it reflects real economics."
 
 #: src/pages/Config.tsx
 msgid "Could not change the password."
@@ -3110,6 +3114,10 @@ msgid "NiceHash fee"
 msgstr "NiceHash fee"
 
 #: src/pages/Config.tsx
+msgid "NiceHash fill-line bottom skip"
+msgstr "NiceHash fill-line bottom skip"
+
+#: src/pages/Config.tsx
 msgid "NiceHash fill-line dust floor"
 msgstr "NiceHash fill-line dust floor"
 
@@ -3646,6 +3654,10 @@ msgstr "Owner token"
 #: src/pages/Status.tsx
 msgid "paid earnings (lifetime)"
 msgstr "paid earnings (lifetime)"
+
+#: src/components/TilesBar.tsx
+msgid "paid vs ocean variance"
+msgstr "paid vs ocean variance"
 
 #: src/pages/Config.tsx
 msgid "Park margin"
@@ -4506,6 +4518,10 @@ msgid "Share of Braiins-purchased shares the pool rejected, computed over the se
 msgstr "Share of Braiins-purchased shares the pool rejected, computed over the selected chart range. Server-side: (Δrejected_m / Δpurchased_m) × 100 across the first and last non-null cumulative counter samples in the range. Updates with the range selector above (3h / 6h / 24h / 1w / 1m / 1y / All). Reference points: Braiins documents ~0.05 % as their inherent marketplace-routing rate (best case when nothing miner-side is wrong); in practice, end-to-end values of 0.05-0.5 % are typical and considered healthy. Sustained values above ~1 % suggest something to investigate - stale shares from Datum being behind, worker identity misconfig, ASIC trouble, or pool-side issues. Rejected shares are still paid for under Braiins's terms (the buyer is responsible for target-pool quality)."
 
 #: src/components/TilesBar.tsx
+msgid "Share of the hashrate we PAID FOR (both venues, from settlement counters) that Ocean did NOT credit, over the selected range. Positive = paying for hashrate that never lands at the pool (rejections, routing, stale shares, latency). Negative = Ocean credited more than we were billed for. Sustained double-digit values mean the venue-reported delivery is overstating what you actually receive."
+msgstr "Share of the hashrate we PAID FOR (both venues, from settlement counters) that Ocean did NOT credit, over the selected range. Positive = paying for hashrate that never lands at the pool (rejections, routing, stale shares, latency). Negative = Ocean credited more than we were billed for. Sustained double-digit values mean the venue-reported delivery is overstating what you actually receive."
+
+#: src/components/TilesBar.tsx
 msgid "share rejection"
 msgstr "share rejection"
 
@@ -4929,6 +4945,11 @@ msgstr "Transaction"
 msgid "Transaction URL template"
 msgstr "Transaction URL template"
 
+#. placeholder {0}: claimed != null ? Math.round(claimed).toLocaleString() : '-'
+#: src/components/TilesBar.tsx
+msgid "TRUE cost per PH/day that OCEAN CREDITED, over the selected range: total spend on both venues divided by the hashrate Ocean actually credited. This is the economically real number - the venue-reported figure ({0}) divides the same spend by what NiceHash/Braiins CLAIM to have delivered, which ignores hashrate that never lands at the pool."
+msgstr "TRUE cost per PH/day that OCEAN CREDITED, over the selected range: total spend on both venues divided by the hashrate Ocean actually credited. This is the economically real number - the venue-reported figure ({0}) divides the same spend by what NiceHash/Braiins CLAIM to have delivered, which ignores hashrate that never lands at the pool."
+
 #: src/components/PriceChart.tsx
 msgid "tx"
 msgstr "tx"
@@ -5146,6 +5167,10 @@ msgstr "When (local)"
 #: src/pages/History.tsx
 msgid "When (UTC)"
 msgstr "When (UTC)"
+
+#: src/pages/Config.tsx
+msgid "When anchoring the NiceHash fill line, ignore this much CUMULATIVE supply from the cheap end of the book before counting toward your target. Use this to keep the anchor off the thin, volatile bottom slice (e.g. 0.1 = skip the cheapest 0.1 EH/s of supply). Different from the dust floor above, which drops individual trickle ORDERS; this one skips a share of total supply however it's split. 0 = off."
+msgstr "When anchoring the NiceHash fill line, ignore this much CUMULATIVE supply from the cheap end of the book before counting toward your target. Use this to keep the anchor off the thin, volatile bottom slice (e.g. 0.1 = skip the cheapest 0.1 EH/s of supply). Different from the dust floor above, which drops individual trickle ORDERS; this one skips a share of total supply however it's split. 0 = off."
 
 #: src/pages/Config.tsx
 msgid "When any active bid carries a fee_rate_pct above this, the mutation gate blocks CREATE_BID, EDIT_PRICE, and EDIT_SPEED. CANCEL_BID is still allowed so you (or the Datum-down auto-cancel) can bail out of a fee-bearing bid. Default 0 = halt the moment Braiins exits beta and charges any fee at all, matching the existing beta_exit Telegram alert. Set higher (e.g. 0.5) to tolerate a known fee without stopping the autopilot."

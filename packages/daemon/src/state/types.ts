@@ -147,6 +147,8 @@ export interface ConfigTable {
   provider_switch_sustained_window_minutes: number;
   nicehash_min_delivered_ph: number;
   nicehash_deep_liquidity_eh: number;
+  /** #E: cumulative bottom-skip (EH/s) for the NiceHash depth-aware fill line. 0 = off. */
+  nicehash_fill_skip_bottom_eh: number;
   braiins_fee_pct: number;
   nicehash_fee_pct: number;
   nicehash_target_hashrate_ph: number;
