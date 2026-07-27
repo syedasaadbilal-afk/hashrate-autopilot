@@ -251,6 +251,14 @@ function useSections(): Section[] {
             help: t`When anchoring the NiceHash fill line, ignore this much CUMULATIVE supply from the cheap end of the book before counting toward your target. Use this to keep the anchor off the thin, volatile bottom slice (e.g. 0.1 = skip the cheapest 0.1 EH/s of supply). Different from the dust floor above, which drops individual trickle ORDERS; this one skips a share of total supply however it's split. 0 = off.`,
           },
           {
+            // #C/#F: threshold for the "paid for but not delivered" alert.
+            key: 'hash_loss_variance_alert_pct',
+            label: t`Hash-loss variance threshold`,
+            kind: 'decimal',
+            unit: '%',
+            help: t`Alert when more than this share of the hashrate you PAY FOR (both marketplaces, from their settlement counters) is not credited by Ocean, sustained for the window set on the Alerts page. A few percent is normal (routing / stale shares); double digits sustained means you're being billed for hashrate that isn't reaching the pool. 0 = disable the alert.`,
+          },
+          {
             // #55: never bid above the price where a real block of supply exists.
             key: 'nicehash_deep_liquidity_eh',
             label: t`NiceHash deep-liquidity threshold`,
@@ -3733,6 +3741,16 @@ function EventClassSubscriptions({
       setEnabled: (n) => toggleClass('hashrate_below_floor', n),
       severity: 'IMPORTANT',
       extra: minutesInput('below_floor_alert_after_minutes', !disabled.has('hashrate_below_floor')),
+    },
+    {
+      // #C/#F: paying for hashrate Ocean isn't crediting.
+      id: 'hash_loss',
+      label: t`Hashrate paid for but not delivered for`,
+      help: t`More of the hashrate you're paying for than your threshold has gone uncredited by Ocean, continuously for this many minutes. Catches paying a marketplace for hashrate that never reaches the pool (rejections, routing, stale shares). The percentage threshold is "Hash-loss variance threshold" below; the sustained window avoids false alarms from Ocean's 5-minute averaging.`,
+      enabled: !disabled.has('hash_loss'),
+      setEnabled: (n) => toggleClass('hash_loss', n),
+      severity: 'IMPORTANT',
+      extra: minutesInput('hash_loss_alert_after_minutes', !disabled.has('hash_loss')),
     },
     {
       id: 'zero_hashrate',

@@ -149,6 +149,8 @@ export interface ConfigTable {
   nicehash_deep_liquidity_eh: number;
   /** #E: cumulative bottom-skip (EH/s) for the NiceHash depth-aware fill line. 0 = off. */
   nicehash_fill_skip_bottom_eh: number;
+  hash_loss_variance_alert_pct: number;
+  hash_loss_alert_after_minutes: number;
   braiins_fee_pct: number;
   nicehash_fee_pct: number;
   nicehash_target_hashrate_ph: number;

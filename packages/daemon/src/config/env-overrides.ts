@@ -308,6 +308,8 @@ const APP_CONFIG_ENV: {
   nicehash_min_delivered_ph: { varName: 'BHA_NICEHASH_MIN_DELIVERED_PH', coerce: asNumber },
   nicehash_deep_liquidity_eh: { varName: 'BHA_NICEHASH_DEEP_LIQUIDITY_EH', coerce: asNumber },
   nicehash_fill_skip_bottom_eh: { varName: 'BHA_NICEHASH_FILL_SKIP_BOTTOM_EH', coerce: asNumber },
+  hash_loss_variance_alert_pct: { varName: 'BHA_HASH_LOSS_VARIANCE_ALERT_PCT', coerce: asNumber },
+  hash_loss_alert_after_minutes: { varName: 'BHA_HASH_LOSS_ALERT_AFTER_MINUTES', coerce: asNumber },
   braiins_fee_pct: { varName: 'BHA_BRAIINS_FEE_PCT', coerce: asNumber },
   nicehash_fee_pct: { varName: 'BHA_NICEHASH_FEE_PCT', coerce: asNumber },
   nicehash_target_hashrate_ph: {

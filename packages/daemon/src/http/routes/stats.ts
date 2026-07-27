@@ -65,6 +65,14 @@ export interface StatsResponse {
    * per-tick poll failed).
    */
   readonly avg_ocean_hashrate_ph: number | null;
+  /**
+   * #I (v1.18.14): duration-weighted average of NiceHash's delivered speed over
+   * the SAME range as avg_ocean_hashrate_ph. The tile previously showed the LIVE
+   * accepted speed from the current order snapshot, which is not comparable with
+   * a range-averaged Ocean figure - reading 1.95 (live) against 1.75 (3h avg) is
+   * apples-to-oranges. Null when no tick in range carried a NiceHash reading.
+   */
+  readonly avg_nicehash_hashrate_ph: number | null;
   readonly total_ph_hours: number | null;
   /**
    * Average effective rate MINUS average hashprice, weighted by
@@ -209,6 +217,7 @@ export async function registerStatsRoute(
         avg_hashrate_ph: metrics.avg_hashrate_ph,
         avg_datum_hashrate_ph: metrics.avg_datum_hashrate_ph,
         avg_ocean_hashrate_ph: metrics.avg_ocean_hashrate_ph,
+        avg_nicehash_hashrate_ph: metrics.avg_nicehash_hashrate_ph,
         total_ph_hours: metrics.total_ph_hours,
         avg_overpay_vs_hashprice_sat_per_ph_day: metrics.avg_overpay_vs_hashprice_sat_per_ph_day,
         avg_cost_per_ph_sat_per_ph_day: metrics.avg_cost_per_ph_sat_per_ph_day,
@@ -240,6 +249,7 @@ async function computeMetrics(
   avg_hashrate_ph: number | null;
   avg_datum_hashrate_ph: number | null;
   avg_ocean_hashrate_ph: number | null;
+  avg_nicehash_hashrate_ph: number | null;
   total_ph_hours: number | null;
   avg_overpay_vs_hashprice_sat_per_ph_day: number | null;
   avg_cost_per_ph_sat_per_ph_day: number | null;
@@ -367,6 +377,18 @@ async function computeMetrics(
             THEN ocean_hashrate_ph * dur ELSE 0 END) AS REAL)
         / SUM(CASE WHEN ocean_hashrate_ph IS NOT NULL THEN dur ELSE 0 END)
       ELSE NULL END AS avg_ocean_hashrate,
+
+      -- #I: duration-weighted NiceHash delivered speed over the same window, so
+      -- the AVG NICEHASH tile is comparable with AVG OCEAN (both range averages).
+      -- Denominator = every tick where a NiceHash order EXISTED, including ticks
+      -- it delivered nothing, so downtime drags the average down exactly like
+      -- AVG BRAIINS ("includes downtime in the denominator") and AVG OCEAN. Using
+      -- only delivering ticks would overstate NiceHash and hide the very loss this
+      -- comparison is meant to reveal.
+      CASE WHEN SUM(CASE WHEN nh_present = 1 THEN dur ELSE 0 END) > 0 THEN
+        CAST(SUM(CASE WHEN nh_present = 1 THEN nh_delivered_ph * dur ELSE 0 END) AS REAL)
+        / SUM(CASE WHEN nh_present = 1 THEN dur ELSE 0 END)
+      ELSE NULL END AS avg_nicehash_hashrate,
 
       -- Total PH-hours delivered: counter-derived, same rationale as
       -- avg_hashrate above. delta / our_bid gives PH-days per tick
@@ -504,6 +526,7 @@ async function computeMetrics(
         delta,
         dur,
         nh_delivered_ph,
+        nh_present,
         nh_delta,
         (delta IS NOT NULL
           AND delta >= 0
@@ -528,6 +551,7 @@ async function computeMetrics(
           -- #49: NiceHash delivered speed this tick (PH/s), for the
           -- provider-aware uptime + blended cost. NULL/pre-0126 -> 0.
           COALESCE(nicehash_delivered_ph, 0) AS nh_delivered_ph,
+          CASE WHEN nicehash_delivered_ph IS NOT NULL THEN 1 ELSE 0 END AS nh_present,
           CASE
             WHEN primary_bid_consumed_sat IS NOT NULL
               AND primary_bid_consumed_sat > 0
@@ -588,6 +612,7 @@ async function computeMetrics(
       avg_hashrate_ph: null,
       avg_datum_hashrate_ph: null,
       avg_ocean_hashrate_ph: null,
+      avg_nicehash_hashrate_ph: null,
       total_ph_hours: null,
       avg_overpay_vs_hashprice_sat_per_ph_day: null,
       avg_cost_per_ph_sat_per_ph_day: null,
@@ -660,6 +685,10 @@ async function computeMetrics(
       r['avg_datum_hashrate'] !== null ? Number(r['avg_datum_hashrate']) : null,
     avg_ocean_hashrate_ph:
       r['avg_ocean_hashrate'] !== null ? Number(r['avg_ocean_hashrate']) : null,
+    avg_nicehash_hashrate_ph:
+      r['avg_nicehash_hashrate'] !== null && r['avg_nicehash_hashrate'] !== undefined
+        ? Number(r['avg_nicehash_hashrate'])
+        : null,
     total_ph_hours: r['total_ph_hours'] !== null ? Number(r['total_ph_hours']) : null,
     // #48: BLENDED across both providers (sat/EH/day -> sat/PH/day). Reduces to
     // the Braiins-only figure when NiceHash didn't deliver in the window.

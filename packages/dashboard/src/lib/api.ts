@@ -556,6 +556,8 @@ export interface AppConfig {
   nicehash_min_delivered_ph: number;
   nicehash_deep_liquidity_eh: number;
   nicehash_fill_skip_bottom_eh: number;
+  hash_loss_variance_alert_pct: number;
+  hash_loss_alert_after_minutes: number;
   braiins_fee_pct: number;
   nicehash_fee_pct: number;
   nicehash_target_hashrate_ph: number;
@@ -1221,6 +1223,8 @@ export interface StatsResponse {
   avg_hashrate_ph: number | null;
   avg_datum_hashrate_ph: number | null;
   avg_ocean_hashrate_ph: number | null;
+  /** #I: duration-weighted NiceHash delivered speed over the range. */
+  avg_nicehash_hashrate_ph: number | null;
   total_ph_hours: number | null;
   avg_overpay_vs_hashprice_sat_per_ph_day: number | null;
   avg_cost_per_ph_sat_per_ph_day: number | null;

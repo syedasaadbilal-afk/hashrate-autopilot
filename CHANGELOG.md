@@ -2,7 +2,7 @@
 
 ## 2026-07-27 (honest economics + live-observation fixes)
 
-### `[Release]` v1.18.14
+### `[Release]` v1.18.15
 
 Fixes found by running v1.18.13 live for a day. Headline: the cost tiles were measuring the wrong denominator, so NiceHash looked far cheaper than it actually was. Folds log items #A, #B, #C/#F, #D, #E.
 
@@ -14,13 +14,31 @@ Fixes found by running v1.18.13 live for a day. Headline: the cost tiles were me
 
 Signed `(paid_for - ocean_credited) / paid_for x 100` over the window - the share of purchased hashrate Ocean never credited. Colour-coded (green <5%, amber <10%, red >=10%). Negative means Ocean credited more than we were billed for. This is the operator-facing leak detector; it also stands in for the "implied NiceHash rejection" deferred from #51, since NiceHash exposes no per-order reject counter.
 
-### `[Fix]` Price oscillation: no trimming while delivering on target (#B)
+### `[Fix]` Price descends to the fill line again; hash-loss alert; comparable AVG NICEHASH (#B/#C/#I)
 
 Root-caused from the 10:00-10:12 log on 2026-07-27. At 49,540 the order was delivering the **full 2.01 PH target**, yet the daemon still cut -200 toward the modelled fill line (~48,800) to shave overpay. Delivery collapsed 2.01 -> 0.24 PH/s over six minutes, forcing a +189 recovery increase through the 10-minute decrease lockout - the "runs up aggressively" the operator reported was the *recovery*, not the cause. `decideNicehash` now suppresses tracking decreases while `onTarget` (delivered >= 90% of target), and never decreases below `minPriceFloorSatPerPhDay` - the last price empirically known to fill. Observed delivery outranks a modelled fill line that under-reads a thin, churning book.
 
-### `[Fix]` Braiins supplement now actually triggers (#A)
+### `[Change]` Braiins supplement RETIRED - single-active again (#A/#G)
 
-The v1.18.13 supplement keyed off the deep-liquidity detector ("is there >=1 EH of supply anywhere?"), which in a liquid book is almost always true - so a NiceHash order delivering 0.42 PH/s never armed it. It now triggers on NiceHash's **actual delivered hashrate**: ON below 1.0 PH/s, OFF once recovered to 1.5 PH/s (hysteresis band so a bouncing reading can't flap the Braiins bid); rationing still forces it on. The NiceHash limit is **no longer throttled to 1 PH** during a supplement - throttling saved nothing (NiceHash bills only for delivered hashrate) and capped/blinded recovery; Braiins simply tops up the shortfall.
+v1.18.13's supplement was meant to top up a NiceHash order under-delivering in a thin book,
+but the real cause was the fill line anchoring on scraps - fixed properly by #E. It was also
+economically wrong: on 2026-07-27 it un-parked a full 1 PH Braiins bid at 51,883 sat/PH/day
+while hashprice was ~50,700 and NiceHash was already delivering 1.65 of the 2 PH target, i.e.
+buying unneeded hashrate at negative margin (#G). Rather than bolt on an economic gate plus
+shortfall sizing, the mode is dropped: the daemon is strictly single-active - rent from
+whichever venue is cheaper, park the other. A brief shortfall is cheaper than negative-margin
+hash, and single-active is far easier to reason about. `nicehash_supplement_active` remains in
+State/observe (permanently false) so any in-flight parked bid unwinds cleanly.
+
+### `[Fix]` Price ceilings now apply to NiceHash too (#H)
+
+`max_bid_sat_per_eh_day` ("Maximum") and `max_overpay_vs_hashprice_sat_per_eh_day` ("Max
+premium over hashprice") were enforced only in `decide.ts`, i.e. on Braiins bids. A NiceHash
+order could therefore be priced above the operator's break-even ceiling with nothing to stop
+it. The NiceHash desired price is now clamped to the same effective cap -
+`min(Maximum, hashprice + Max premium)` - before order maintenance, with a log line when it
+binds. The cap expresses what the OPERATOR is willing to pay, so it must hold regardless of
+which venue is live.
 
 ### `[Fix]` NiceHash fill-line dust floor was silently ignored (#E)
 

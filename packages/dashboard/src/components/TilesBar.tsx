@@ -285,10 +285,20 @@ const TILE_RENDERERS: Record<DashboardTileId, (ctx: TileCtx) => TileResult> = {
   // #dual-provider: this tile slot now shows NiceHash (Datum stats are
   // unconfigured on this deployment). Value is the live accepted hashrate on
   // the NiceHash order - the equivalent of Avg Braiins for the NiceHash side.
-  avg_datum: ({ intlLocale, denomination, nicehashAcceptedPh }) => ({
-    value: denomination.formatHashrate(nicehashAcceptedPh ?? null, intlLocale),
-    tooltip: t`Live accepted hashrate on your NiceHash order (the NiceHash-side equivalent of Avg Braiins). Sourced from the order's acceptedCurrentSpeed each tick.`,
-  }),
+  avg_datum: ({ stats, intlLocale, denomination, nicehashAcceptedPh }) => {
+    // #I: use the DURATION-WEIGHTED average over the selected range so this is
+    // directly comparable with AVG OCEAN (also a range average). Showing the live
+    // accepted speed here made the two tiles apples-to-oranges. Falls back to the
+    // live figure only when the range has no NiceHash readings yet.
+    const ranged = stats?.avg_nicehash_hashrate_ph ?? null;
+    return {
+      value: denomination.formatHashrate(ranged ?? nicehashAcceptedPh ?? null, intlLocale),
+      tooltip:
+        ranged != null
+          ? t`Duration-weighted average of your NiceHash order's delivered (accepted) speed over the selected range - the NiceHash-side equivalent of Avg Braiins, on the SAME basis as Avg Ocean so the two can be compared directly.`
+          : t`Live accepted hashrate on your NiceHash order (no range history yet). Sourced from the order's acceptedCurrentSpeed each tick.`,
+    };
+  },
   avg_ocean: ({ stats, intlLocale, denomination }) => ({
     value: denomination.formatHashrate(stats?.avg_ocean_hashrate_ph ?? null, intlLocale),
     tooltip: t`Duration-weighted average of the hashrate Ocean credits to our payout address over the selected range. A sustained gap below Avg Braiins / Avg Datum means the pool isn't crediting work we think we delivered.`,

@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.18.14"
+version: "1.18.15"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,17 +53,21 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
-  v1.18.14 - honest economics: cost is now measured on what OCEAN credits, plus fixes for price oscillation, the supplement trigger and the fill-line filters.
+  v1.18.15 - honest economics: cost is now measured on what OCEAN credits, plus fixes for price oscillation, the supplement trigger and the fill-line filters.
 
   IMPORTANT - your true cost may be higher than earlier builds showed
   - AVG COST DELIVERED and AVG COST VS HASHPRICE now divide your spend by the hashrate OCEAN ACTUALLY CREDITED, not by what the marketplaces claim to have delivered. Those are different numbers: on 27 Jul the venues reported 2.43 PH/s while Ocean credited 1.37 PH/s, so the old tiles read 52,004 sat/PH/day when the real cost was about 92,000. If your figures jump after updating, they were understated before - nothing changed about what you pay, only about what the dashboard admits.
   - New "paid vs ocean variance" tile: the share of the hashrate you PAID FOR that Ocean never credited (rejections, routing, stale shares, latency). Green under 5%, amber to 10%, red above. This is the number to watch - sustained double digits mean a venue is billing for hashrate that doesn't reach the pool.
 
   FIXED
-  - Price oscillation: the daemon no longer trims the NiceHash price while the order is already delivering at target. Previously it would cut -200 to shave overpay, lose almost all supply (2.01 -> 0.24 PH/s in six minutes on 27 Jul), then have to chase the price back up through the 10-minute decrease cooldown. It also never cuts below a price that has empirically been filling.
-  - Braiins supplement now actually triggers. It keys off NiceHash's REAL delivered hashrate (top up when NiceHash is under 1 PH/s, stand down once it recovers past 1.5 PH/s) instead of a book-depth proxy that almost never fired in a liquid market. NiceHash is no longer throttled to 1 PH during a supplement - that saved nothing and hid the recovery.
+  - Overpay no longer strands the order above the fill line. The NiceHash price tracks down toward the fill line in the usual capped 200 sat/PH/day steps. The 27 Jul collapse (a trim at full delivery losing almost all supply) was caused by the fill line anchoring on scraps, which the dust floor and bottom skip fix at source - so the price can descend safely again instead of paying a permanent ~900 sat/PH/day spread.
+  - A "paid for but not delivered" ALERT: fires when more of the hashrate you are paying for than your threshold goes uncredited by Ocean, sustained for your chosen window (defaults: 15% over 30 minutes). Configure the percentage under Pricing and the window on the Alerts page. Sustained-gated on purpose - Ocean's hashrate is a 5-minute trailing average, so short spikes are measurement lag, not a leak.
+  - AVG NICEHASH is now a duration-weighted average over the selected range, like AVG BRAIINS and AVG OCEAN - and it counts ticks where the order delivered nothing, so downtime drags it down. It previously showed the LIVE accepted speed, which could not be meaningfully compared against a range-averaged Ocean figure.
   - The "NiceHash fill-line dust floor" setting was silently ignored whenever a target hashrate was set (i.e. always), so trickle orders delivering a fraction of a PH still set the fill line. It now applies.
   - Timeline: NiceHash rows show the order's speed limit instead of a dash.
+
+  - Single-active again: the Braiins "supplement" mode is retired. The autopilot rents from whichever venue is cheaper and parks the other, full stop. The supplement existed to cover a NiceHash order that under-delivered in a thin book, but the real cause was the fill line anchoring on scraps - fixed properly by the dust floor and bottom skip below. It was also buying hashrate at a loss: on 27 Jul it un-parked a full 1 PH Braiins bid at 51,883 sat/PH/day while break-even was ~50,700 and NiceHash was already delivering 1.65 of the 2 PH target. A brief shortfall is cheaper than negative-margin hashrate.
+  - Your price ceilings now apply to NiceHash too. "Maximum" and "Max premium over hashprice" were only enforced on Braiins bids, so a NiceHash order could be priced above your break-even ceiling with nothing to stop it. The effective cap - min(Maximum, hashprice + Max premium) - is a statement about what YOU are willing to pay, so it now holds regardless of which venue is live.
 
   NEW
   - "NiceHash fill-line bottom skip" (EH/s, default 0 = off): when anchoring the fill line, ignore this much CUMULATIVE supply from the cheap end of the book. Use it with the dust floor to keep the anchor off the thin, volatile bottom slice - the dust floor drops individual trickle orders, this skips a share of total supply however it is split.

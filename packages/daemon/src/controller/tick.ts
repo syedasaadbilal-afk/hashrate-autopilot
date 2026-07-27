@@ -99,21 +99,7 @@ export interface TickResult {
   readonly executed: readonly ExecutionResult[];
 }
 
-/**
- * #A (v1.18.14): Braiins-supplement hysteresis band on NiceHash delivered PH/s.
- * ON below 1 PH ("supplement when NiceHash is under 1 PH"), OFF once it recovers
- * to 1.5 PH. The gap prevents a bouncing delivery figure flapping the Braiins bid.
- */
-const SUPPLEMENT_ON_PH = 1.0;
-const SUPPLEMENT_OFF_PH = 1.5;
 
-/**
- * #B (v1.18.14): treat NiceHash as "delivering on target" at/above this fraction
- * of the configured target. While on target we do NOT trim the price - cutting
- * only sheds overpay we don't need, and the Jul 27 incident showed a -200 trim at
- * full 2.01 PH delivery collapsed us to 0.24 PH within 6 minutes.
- */
-const NICEHASH_ON_TARGET_FRACTION = 0.9;
 
 export class Controller {
   private belowFloorSince: number | null = null;
@@ -154,14 +140,7 @@ export class Controller {
    */
   private nicehashSupplement: 'OFF' | 'ON' | 'UNWINDING' = 'OFF';
 
-  /**
-   * #B (v1.18.14): the NiceHash order price that most recently delivered at/near
-   * target. Acts as a soft floor for decreases: we never trim below a price that
-   * is empirically known to fill, because the modelled fill line under-reads a
-   * thin/churning book. Reset when the market genuinely re-prices lower (the
-   * order stops delivering there anyway, which clears it via the delivery gate).
-   */
-  private nicehashLastGoodPriceSatPerPhDay: number | null = null;
+
 
   /**
    * #dual-provider: epoch-ms until NiceHash's 10-min price-DECREASE cooldown
@@ -554,35 +533,26 @@ export class Controller {
     //                                             UNWINDING->OFF (restore NiceHash
     //                                             to target). Never leaves NiceHash
     //                                             stuck at the throttled 1 PH.
-    // #A (v1.18.14): the trigger is NiceHash's ACTUAL DELIVERED hashrate, not the
-    // deep-liquidity proxy. In a liquid book there is almost always 1 EH of supply
-    // SOMEWHERE, so `nicehashRationed` read false and the supplement never armed
-    // even while our order delivered 0.42 PH. Now: NiceHash active but delivering
-    // below SUPPLEMENT_ON_PH -> un-park Braiins to top up; re-park once it recovers
-    // past SUPPLEMENT_OFF_PH. The gap between the thresholds is hysteresis so a
-    // bouncing delivery reading cannot flap the Braiins bid. Rationing still forces
-    // the supplement on (a truly thin book can't recover on its own).
-    const nicehashActive = this.activeProvider === 'NICEHASH';
-    const nhDeliveredPh = this.lastProviderEvaluation?.nicehashOrder?.acceptedSpeedPh ?? null;
-    const prevSupplement = this.nicehashSupplement;
-    if (!nicehashActive) {
-      this.nicehashSupplement = 'OFF';
-    } else if (evald.nicehashRationed || (nhDeliveredPh !== null && nhDeliveredPh < SUPPLEMENT_ON_PH)) {
-      this.nicehashSupplement = 'ON';
-    } else if (nhDeliveredPh === null) {
-      // No delivery reading this tick (first tick after a switch / lookup blip) -
-      // hold rather than spuriously toggling the Braiins bid.
-    } else if (nhDeliveredPh >= SUPPLEMENT_OFF_PH) {
-      this.nicehashSupplement = prevSupplement === 'ON' ? 'UNWINDING' : 'OFF';
-    }
-    // else: delivery sits inside the hysteresis band - keep the current state.
-    if (this.nicehashSupplement !== 'OFF') {
-      console.info(
-        `[provider] Braiins supplement ${this.nicehashSupplement} - NiceHash delivering ` +
-          `${nhDeliveredPh?.toFixed(2) ?? '?'} PH/s` +
-          `${evald.nicehashRationed ? ' (book rationed)' : ''} (Braiins un-parked to top up)`,
-      );
-    }
+    // #56/#A/#G (v1.18.14): the Braiins supplement is RETIRED - the daemon is
+    // strictly SINGLE-ACTIVE again: rent from whichever venue is cheaper and park
+    // the other.
+    //
+    // Why: the supplement existed to cover a NiceHash order that under-delivered
+    // in a thin book. But the real cause was the fill-line anchoring on scraps,
+    // which #E fixes properly (per-order dust floor + cumulative bottom skip, now
+    // actually applied to the depth path). With a sound anchor there is nothing
+    // left to compensate for.
+    //
+    // And the supplement was economically wrong: on 2026-07-27 it un-parked a full
+    // 1 PH Braiins bid at 51,883 sat/PH/day while hashprice was ~50,700 and
+    // NiceHash was already delivering 1.65 of the 2 PH target - buying unneeded
+    // hashrate at a LOSS (#G). Rather than bolt on an economic gate plus shortfall
+    // sizing, we drop the mode: a brief shortfall is cheaper than negative-margin
+    // hash, and single-active is far easier to reason about.
+    //
+    // The flag remains in State/observe purely so decide() keeps compiling and any
+    // in-flight parked bid unwinds cleanly; it is now permanently OFF.
+    this.nicehashSupplement = 'OFF';
 
     this.lastProviderEvaluation = {
       at: state.tick_at,
@@ -662,11 +632,50 @@ export class Controller {
                 marginSatPerPhDay: cfg.park_margin_sat_per_ph_day,
               })
             : null;
+        // #H (v1.18.14): apply the SAME price ceilings to NiceHash that the
+        // Braiins path has always enforced - effective cap =
+        // min(Maximum, hashprice + Max premium over hashprice). Previously these
+        // lived only in decide.ts, so a NiceHash order could be priced above the
+        // operator's break-even ceiling with nothing to stop it. The cap is a
+        // property of what the OPERATOR is willing to pay, so it must hold
+        // regardless of which venue happens to be live.
+        const nhFixedCapPh = cfg.max_bid_sat_per_eh_day / 1000;
+        const nhDynamicCapPh =
+          cfg.max_overpay_vs_hashprice_sat_per_eh_day !== null &&
+          state.hashprice_sat_per_ph_day !== null
+            ? state.hashprice_sat_per_ph_day +
+              cfg.max_overpay_vs_hashprice_sat_per_eh_day / 1000
+            : null;
+        const nhEffectiveCapPh =
+          nhDynamicCapPh !== null ? Math.min(nhFixedCapPh, nhDynamicCapPh) : nhFixedCapPh;
+        // The ceiling is about what we EFFECTIVELY pay, so it must be compared
+        // fee-inclusive: NiceHash bills its marketplace fee on top of the order
+        // price, and hashprice (break-even) is what the hashrate earns. Paying
+        // 49,500 at a 3% fee really costs ~50,985. So the cap the ORDER PRICE may
+        // reach is capPh / (1 + fee), not capPh.
+        const nhFeeMult = 1 + (cfg.nicehash_fee_pct ?? 0) / 100;
+        const nhPriceCapPh = nhFeeMult > 0 ? nhEffectiveCapPh / nhFeeMult : nhEffectiveCapPh;
+        const nhDesiredCapped =
+          evald.nicehashEffectiveSatPerPhDay !== null
+            ? Math.min(evald.nicehashEffectiveSatPerPhDay, nhPriceCapPh)
+            : null;
+        if (
+          evald.nicehashEffectiveSatPerPhDay !== null &&
+          nhDesiredCapped !== null &&
+          nhDesiredCapped < evald.nicehashEffectiveSatPerPhDay
+        ) {
+          console.info(
+            `[nicehash] desired ${Math.round(evald.nicehashEffectiveSatPerPhDay)} clamped to ` +
+              `effective cap ${Math.round(nhPriceCapPh)} sat/PH/day (fee-inclusive ceiling ${Math.round(nhEffectiveCapPh)}) ` +
+              `(min of maximum ${Math.round(nhFixedCapPh)}` +
+              `${nhDynamicCapPh !== null ? `, hashprice+premium ${Math.round(nhDynamicCapPh)}` : ''})`,
+          );
+        }
         const actions = decideNicehash({
           // Use the seeded/committed provider (boot seed may have overridden the
           // windowed selection on the first tick) so order maintenance matches.
           providerActive: this.activeProvider === 'NICEHASH',
-          desiredPriceSatPerPhDay: evald.nicehashEffectiveSatPerPhDay,
+          desiredPriceSatPerPhDay: nhDesiredCapped,
           // Overpay cushion baked into `desired`, so decideNicehash can throttle
           // increases: hold while still above the fill line, raise only when the
           // order has fallen to it (avoids per-tick increases that would keep
@@ -674,20 +683,6 @@ export class Controller {
           overpaySatPerPhDay: cfg.overpay_sat_per_eh_day / 1000,
           // #55: hold the price (don't chase up) while the book is rationed.
           rationed: evald.nicehashRationed,
-          // #B: delivery-aware decrease gate. While the order is already
-          // delivering at/near target, DON'T trim the price - the modelled fill
-          // line under-reads a thin/churning book, and a -200 trim at full 2.01 PH
-          // delivery collapsed us to 0.24 PH (Jul 27). Also pass the last price
-          // known to deliver target as a soft floor so we never cut below a level
-          // that empirically fills.
-          onTarget:
-            snapshot.acceptedSpeedPh !== null &&
-            cfg.nicehash_target_hashrate_ph > 0 &&
-            snapshot.acceptedSpeedPh >=
-              cfg.nicehash_target_hashrate_ph * NICEHASH_ON_TARGET_FRACTION,
-          ...(this.nicehashLastGoodPriceSatPerPhDay !== null
-            ? { minPriceFloorSatPerPhDay: this.nicehashLastGoodPriceSatPerPhDay }
-            : {}),
           parkPriceSatPerPhDay: parkPrice,
           order: {
             exists: snapshot.exists,
@@ -744,17 +739,6 @@ export class Controller {
         // had healed. Braiins simply tops up the shortfall instead.
         const nicehashDesiredLimitPh = nicehashTargetLimitPh;
 
-        // #B: remember the price at which we're delivering on target - it becomes
-        // the soft floor for future decreases (see decideNicehash.minPriceFloor).
-        if (
-          snapshot.acceptedSpeedPh !== null &&
-          snapshot.currentPriceSatPerPhDay !== null &&
-          cfg.nicehash_target_hashrate_ph > 0 &&
-          snapshot.acceptedSpeedPh >=
-            cfg.nicehash_target_hashrate_ph * NICEHASH_ON_TARGET_FRACTION
-        ) {
-          this.nicehashLastGoodPriceSatPerPhDay = snapshot.currentPriceSatPerPhDay;
-        }
         const nhResults = await executeNicehash(
           svc,
           actions,

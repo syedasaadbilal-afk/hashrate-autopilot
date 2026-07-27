@@ -177,6 +177,8 @@ export interface AlertEvaluatorOptions {
 export class AlertEvaluator {
   private datum_unreachable: EventState = INITIAL;
   private hashrate_below_floor: EventState = INITIAL;
+  /** #C/#F: paying for hashrate Ocean isn't crediting. */
+  private hash_loss: EventState = INITIAL;
   private zero_hashrate: EventState = INITIAL;
   private api_unreachable: EventState = INITIAL;
   private unknown_bid: EventState = INITIAL;
@@ -317,6 +319,7 @@ export class AlertEvaluator {
     const classes: Array<[string, (s: EventState) => void]> = [
       ['datum_unreachable', (s) => { this.datum_unreachable = s; }],
       ['hashrate_below_floor', (s) => { this.hashrate_below_floor = s; }],
+      ['hash_loss', (s) => { this.hash_loss = s; }],
       ['zero_hashrate', (s) => { this.zero_hashrate = s; }],
       ['api_unreachable', (s) => { this.api_unreachable = s; }],
       ['unknown_bid', (s) => { this.unknown_bid = s; }],
@@ -446,6 +449,49 @@ export class AlertEvaluator {
         }),
       bodyForRecovery: (durMs) =>
         copyFor(state).hashrate_below_floor_body_recovery({ duration: formatDuration(durMs) }),
+    });
+  }
+
+  /**
+   * #C/#F (v1.18.14): "paying for hashrate that isn't delivered". Compares what
+   * we are BILLED for this tick (the active venue's delivered speed - Braiins
+   * counter-derived or the NiceHash order's accepted speed) against what Ocean
+   * CREDITS. A sustained positive gap means real money is buying hashrate that
+   * never reaches the pool (rejections / routing / stale shares / latency).
+   *
+   * Sustained-window gated because Ocean's figure is a 5-min trailing average
+   * and delivery swings tick to tick - short spikes are measurement lag, not a
+   * leak (proven live on 2026-07-27, where a 44% 3h gap later inverted).
+   */
+  private async evaluateHashLoss(state: State, disabledClasses: ReadonlySet<string>): Promise<void> {
+    const paidPh = state.actual_hashrate.total_ph;
+    const oceanPh = state.ocean_hashrate_ph;
+    const thresholdPct = state.config.hash_loss_variance_alert_pct;
+    // Only meaningful with a real Ocean reading, actual billed delivery, and the
+    // alert enabled (threshold 0 = off). Ignore trivial hashrates where the
+    // percentage is dominated by noise.
+    const lossPct =
+      oceanPh !== null && paidPh > 0.05 ? ((paidPh - oceanPh) / paidPh) * 100 : null;
+    const isBad = thresholdPct > 0 && lossPct !== null && lossPct > thresholdPct;
+    const thresholdMs = state.config.hash_loss_alert_after_minutes * 60_000;
+    this.hash_loss = await this.runTransition({
+      event_class: 'hash_loss',
+      severity: 'IMPORTANT',
+      isBad,
+      thresholdMs,
+      currentState: this.hash_loss,
+      disabledClasses,
+      title: copyFor(state).hash_loss_title(),
+      titleForRecovery: copyFor(state).hash_loss_title_recovery(),
+      bodyForFiring: (durMs) =>
+        copyFor(state).hash_loss_body({
+          duration: formatDuration(durMs),
+          loss_pct: formatFixed(lossPct ?? 0, 1, numberLocale(state)),
+          paid_ph: formatFixed(paidPh, 2, numberLocale(state)),
+          ocean_ph: formatFixed(oceanPh ?? 0, 2, numberLocale(state)),
+        }),
+      bodyForRecovery: (durMs) =>
+        copyFor(state).hash_loss_body_recovery({ duration: formatDuration(durMs) }),
     });
   }
 

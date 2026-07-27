@@ -62,6 +62,11 @@ export interface AlertCopy {
   }): string;
   hashrate_below_floor_body_recovery(args: { duration: string }): string;
 
+  /** #C/#F: paying for hashrate Ocean isn't crediting. */
+  hash_loss_title(): string;
+  hash_loss_title_recovery(): string;
+  hash_loss_body(args: { duration: string; loss_pct: string; paid_ph: string; ocean_ph: string }): string;
+  hash_loss_body_recovery(args: { duration: string }): string;
   zero_hashrate_title(): string;
   zero_hashrate_title_recovery(): string;
   zero_hashrate_body(args: { duration: string }): string;
@@ -206,6 +211,12 @@ const EN: AlertCopy = {
   hashrate_below_floor_body_recovery: ({ duration }) =>
     `Hashrate back at or above floor - was below for ${duration}.`,
 
+  hash_loss_title: () => 'Paying for hashrate Ocean is not crediting',
+  hash_loss_title_recovery: () => 'Hashrate delivery back to normal',
+  hash_loss_body: ({ duration, loss_pct, paid_ph, ocean_ph }) =>
+    `For ${duration}, ${loss_pct}% of the hashrate you are paying for has not been credited by Ocean (paying for ${paid_ph} PH/s, Ocean crediting ${ocean_ph} PH/s). You are being billed for hashrate that is not reaching the pool - check the marketplace order's reject/stale counters and the pool connection.`,
+  hash_loss_body_recovery: ({ duration }) =>
+    `Delivery variance is back under your threshold after ${duration}.`,
   zero_hashrate_title: () => 'Zero hashrate',
   zero_hashrate_title_recovery: () => 'Hashrate flowing again',
   zero_hashrate_body: ({ duration }) =>
@@ -336,6 +347,12 @@ const NL: AlertCopy = {
   hashrate_below_floor_body_recovery: ({ duration }) =>
     `Hashrate weer op of boven de vloer - was ${duration} onder.`,
 
+  hash_loss_title: () => 'Paying for hashrate Ocean is not crediting',
+  hash_loss_title_recovery: () => 'Hashrate delivery back to normal',
+  hash_loss_body: ({ duration, loss_pct, paid_ph, ocean_ph }) =>
+    `For ${duration}, ${loss_pct}% of the hashrate you are paying for has not been credited by Ocean (paying for ${paid_ph} PH/s, Ocean crediting ${ocean_ph} PH/s). You are being billed for hashrate that is not reaching the pool - check the marketplace order's reject/stale counters and the pool connection.`,
+  hash_loss_body_recovery: ({ duration }) =>
+    `Delivery variance is back under your threshold after ${duration}.`,
   zero_hashrate_title: () => 'Geen hashrate',
   zero_hashrate_title_recovery: () => 'Hashrate stroomt weer',
   zero_hashrate_body: ({ duration }) =>
@@ -467,6 +484,12 @@ const ES: AlertCopy = {
   hashrate_below_floor_body_recovery: ({ duration }) =>
     `Hashrate de nuevo en o por encima del mínimo - estuvo por debajo ${duration}.`,
 
+  hash_loss_title: () => 'Paying for hashrate Ocean is not crediting',
+  hash_loss_title_recovery: () => 'Hashrate delivery back to normal',
+  hash_loss_body: ({ duration, loss_pct, paid_ph, ocean_ph }) =>
+    `For ${duration}, ${loss_pct}% of the hashrate you are paying for has not been credited by Ocean (paying for ${paid_ph} PH/s, Ocean crediting ${ocean_ph} PH/s). You are being billed for hashrate that is not reaching the pool - check the marketplace order's reject/stale counters and the pool connection.`,
+  hash_loss_body_recovery: ({ duration }) =>
+    `Delivery variance is back under your threshold after ${duration}.`,
   zero_hashrate_title: () => 'Hashrate cero',
   zero_hashrate_title_recovery: () => 'Hashrate fluyendo de nuevo',
   zero_hashrate_body: ({ duration }) =>

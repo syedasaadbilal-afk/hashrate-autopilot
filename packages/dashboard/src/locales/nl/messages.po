@@ -453,6 +453,10 @@ msgstr "Melding verstuurd"
 msgid "Alert thresholds"
 msgstr "Alarmdrempels"
 
+#: src/pages/Config.tsx
+msgid "Alert when more than this share of the hashrate you PAY FOR (both marketplaces, from their settlement counters) is not credited by Ocean, sustained for the window set on the Alerts page. A few percent is normal (routing / stale shares); double digits sustained means you're being billed for hashrate that isn't reaching the pool. 0 = disable the alert."
+msgstr ""
+
 #: src/components/Layout.tsx
 #: src/pages/Alerts.tsx
 #: src/pages/Config.tsx
@@ -1925,6 +1929,10 @@ msgstr "Tijdgewogen gemiddelde van de hashrate die Ocean aan ons payout-adres to
 msgid "Duration-weighted average of the hashrate Ocean credits to our payout address, computed over the selected chart range. Each tick (every 60 s) the daemon calls Ocean's /v1/user_hashrate endpoint and reads the `hashrate_300s` field - Ocean's own 5-minute sliding-window estimate for this wallet. So: sampled every minute, each sample is a 5-minute smoothed value. A sustained gap below Avg Braiins / Avg Datum means the pool isn't crediting work we think we delivered. Updates with the range selector above."
 msgstr "Duur-gewogen gemiddelde van de hashrate die Ocean toeschrijft aan ons uitbetaaladres, berekend over het geselecteerde grafiekbereik. Elke tick (elke 60 s) roept de daemon Oceans /v1/user_hashrate-endpoint aan en leest het `hashrate_300s`-veld - Oceans eigen 5-minuten schuivend-venster schatting voor deze wallet. Dus: elke minuut bemonsterd, elke meting is een 5-minuten gladde waarde. Een aanhoudend tekort onder Gem. Braiins / Gem. Datum betekent dat de pool geen werk credit geeft waarvan wij denken dat het geleverd is. Wijzigt mee met de bereikselector hierboven."
 
+#: src/components/TilesBar.tsx
+msgid "Duration-weighted average of your NiceHash order's delivered (accepted) speed over the selected range - the NiceHash-side equivalent of Avg Braiins, on the SAME basis as Avg Ocean so the two can be compared directly."
+msgstr ""
+
 #: src/pages/Config.tsx
 msgid "Dynamic DNS"
 msgstr "Dynamic DNS"
@@ -2363,6 +2371,10 @@ msgstr "Profit & Loss-data hard resetten? Dit VERWIJDERT de opgeslagen Ocean-uit
 msgid "Hard reset: delete the stored payout history + spend cache and rebuild both from scratch. Use only if 'rebuild' didn't fix it."
 msgstr "Harde reset: verwijder de opgeslagen uitbetalingsgeschiedenis + spendcache en bouw beide opnieuw op vanaf nul. Gebruik alleen als 'rebuild' het niet oploste."
 
+#: src/pages/Config.tsx
+msgid "Hash-loss variance threshold"
+msgstr ""
+
 #: src/components/BidEventDrawer.tsx
 #: src/components/PriceChart.tsx
 #: src/pages/Config.tsx
@@ -2403,6 +2415,10 @@ msgstr "Hashrate-grafiek"
 #: src/pages/Status.tsx
 msgid "Hashrate Ocean credits to our payout address (5-min sliding window). Sourced per-tick from /v1/user_hashrate.hashrate_300s. Compare against AVG BRAIINS / AVG DATUM at the top of the page; sustained gaps mean shares are getting lost somewhere in the Braiins → Datum → Ocean pipeline."
 msgstr "Hashrate die Ocean toeschrijft aan ons uitbetaaladres (5-min schuivend venster). Per tick opgehaald uit /v1/user_hashrate.hashrate_300s. Vergelijk met AVG BRAIINS / AVG DATUM bovenaan; aanhoudende verschillen betekenen dat shares onderweg verloren gaan in de Braiins → Datum → Ocean pijplijn."
+
+#: src/pages/Config.tsx
+msgid "Hashrate paid for but not delivered for"
+msgstr ""
 
 #: src/lib/alertConditions.ts
 msgid "hashrate restored"
@@ -2740,7 +2756,7 @@ msgid "LIVE"
 msgstr "LIVE"
 
 #: src/components/TilesBar.tsx
-msgid "Live accepted hashrate on your NiceHash order (the NiceHash-side equivalent of Avg Braiins). Sourced from the order's acceptedCurrentSpeed each tick."
+msgid "Live accepted hashrate on your NiceHash order (no range history yet). Sourced from the order's acceptedCurrentSpeed each tick."
 msgstr ""
 
 #: src/components/TilesBar.tsx
@@ -2976,6 +2992,10 @@ msgstr "Meer over de naam /umbrel-api"
 #: src/pages/Config.tsx
 msgid "More about the pre-installation earnings offset"
 msgstr "Meer over de pre-installatie-correctie"
+
+#: src/pages/Config.tsx
+msgid "More of the hashrate you're paying for than your threshold has gone uncredited by Ocean, continuously for this many minutes. Catches paying a marketplace for hashrate that never reaches the pool (rejections, routing, stale shares). The percentage threshold is \"Hash-loss variance threshold\" below; the sustained window avoids false alarms from Ocean's 5-minute averaging."
+msgstr ""
 
 #: src/pages/Config.tsx
 msgid "MP3 / OGG / WAV / WebM, max 200 KB."
