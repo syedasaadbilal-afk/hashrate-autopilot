@@ -52,6 +52,7 @@ export class ConfigRepo {
         rest.show_effective_rate_on_price_chart === 1,
       show_share_log_on_hashrate_chart:
         rest.show_share_log_on_hashrate_chart === 1,
+      cheap_mode_slabs_enabled: rest.cheap_mode_slabs_enabled === 1,
       notifications_muted: rest.notifications_muted === 1,
       notify_on_pool_block_credit: rest.notify_on_pool_block_credit === 1,
       notify_on_braiins_deposit: rest.notify_on_braiins_deposit === 1,
@@ -124,6 +125,7 @@ export class ConfigRepo {
       show_share_log_on_hashrate_chart: (validated.show_share_log_on_hashrate_chart
         ? 1
         : 0) as 0 | 1,
+      cheap_mode_slabs_enabled: (validated.cheap_mode_slabs_enabled ? 1 : 0) as 0 | 1,
       notifications_muted: (validated.notifications_muted ? 1 : 0) as 0 | 1,
       notify_on_pool_block_credit: (validated.notify_on_pool_block_credit ? 1 : 0) as 0 | 1,
       notify_on_braiins_deposit: (validated.notify_on_braiins_deposit ? 1 : 0) as 0 | 1,

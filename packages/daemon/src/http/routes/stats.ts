@@ -583,6 +583,19 @@ async function computeMetrics(
       )
     )
   `;
+  // B3 (v1.18.15): NiceHash's marketplace fee is charged ON TOP of the order
+  // price and is NOT included in `payedAmount`, so raw NiceHash spend understates
+  // what the hashrate actually costs us. Scale it by (1 + fee%) everywhere cost is
+  // derived, matching how the switch comparison and the price ceiling already
+  // treat NiceHash. Braiins' consumed-sat counter is what Braiins charged, so it
+  // needs no adjustment (its own fee knob is applied at comparison time).
+  const feeRow = await db
+    .selectFrom('config')
+    .select(['nicehash_fee_pct'])
+    .where('id', '=', 1)
+    .executeTakeFirst();
+  const nhFeeMult = 1 + (feeRow?.nicehash_fee_pct ?? 0) / 100;
+
   const row = await sql.raw(queryText).execute(db);
 
   // #290: wall-clock denominator for uptime + bid coverage. Clamped
@@ -634,7 +647,7 @@ async function computeMetrics(
   const num = (k: string): number => (r[k] !== null && r[k] !== undefined ? Number(r[k]) : 0);
   const brSpend = num('br_spend');
   const brEhdays = num('br_ehdays');
-  const nhSpend = num('nh_spend');
+  const nhSpend = num('nh_spend') * nhFeeMult;
   const nhEhdays = num('nh_ehdays');
   const brEhdaysHp = num('br_ehdays_hp');
   const nhEhdaysHp = num('nh_ehdays_hp');
@@ -644,7 +657,7 @@ async function computeMetrics(
   const blendedAvgCostEhDay = totalEhdays > 0 ? (brSpend + nhSpend) / totalEhdays : null;
   let blendedVsHashpriceEhDay: number | null = null;
   if (totalEhdaysHp > 0) {
-    const blendedAvgCostHp = (num('br_spend_hp') + num('nh_spend_hp')) / totalEhdaysHp;
+    const blendedAvgCostHp = (num('br_spend_hp') + num('nh_spend_hp') * nhFeeMult) / totalEhdaysHp;
     const blendedHashprice = (num('br_hp_ehdays') + num('nh_hp_ehdays')) / totalEhdaysHp;
     blendedVsHashpriceEhDay = blendedAvgCostHp - blendedHashprice;
   }
@@ -652,7 +665,7 @@ async function computeMetrics(
   // #F: the honest, Ocean-credited economics. Same spend, divided by what Ocean
   // ACTUALLY credited rather than what the venues claim to have delivered.
   const oceanEhdays = num('ocean_ehdays');
-  const spendOnOceanTicks = num('br_spend_ocean') + num('nh_spend_ocean');
+  const spendOnOceanTicks = num('br_spend_ocean') + num('nh_spend_ocean') * nhFeeMult;
   const claimedEhdaysOceanTicks = num('br_ehdays_ocean') + num('nh_ehdays_ocean');
   const avgCostPerOceanEhDay = oceanEhdays > 0 ? spendOnOceanTicks / oceanEhdays : null;
   const oceanVsHashpriceEhDay =

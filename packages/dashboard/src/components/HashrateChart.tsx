@@ -112,6 +112,8 @@ const COLOR_DATUM = '#34d399';
 // chart - reinforces the "Ocean → blue" association and contrasts
 // harder against the green Datum line than cyan did.
 const COLOR_OCEAN = '#3b82f6';
+/** B4: NiceHash delivered line - amber, distinct from Braiins + Ocean. */
+const COLOR_NICEHASH = '#f59e0b';
 const COLOR_TARGET = '#94a3b8';
 const COLOR_FLOOR = '#64748b';
 // Gold for the rare "we found this block ourselves" case
@@ -889,6 +891,11 @@ export const HashrateChart = memo(function HashrateChart({
     const rawDatumYs = points.map((p) => p.datum_hashrate_ph);
     const hasDatum = rawDatumYs.some((v) => v !== null);
     const oceanYs = points.map((p) => p.ocean_hashrate_ph);
+    // B4: NiceHash delivered (accepted) speed - the NiceHash-side counterpart of
+    // the Braiins delivered line, so an operator can see BOTH venues' delivery
+    // against what Ocean credited, on one chart.
+    const nicehashYs = points.map((p) => p.nicehash_delivered_ph ?? null);
+    const hasNicehash = nicehashYs.some((v) => v !== null && v > 0);
     // #93: pick the right-axis series spec from rightAxisSeries.
     // Each spec defines the per-point values, the tick formatter, the
     // axis label, and the line stroke colour. 'none' produces null.
@@ -1327,6 +1334,7 @@ export const HashrateChart = memo(function HashrateChart({
     };
     const datumPath = pathWithNullGaps(datumYs);
     const oceanPath = pathWithNullGaps(oceanYs);
+    const nicehashPath = pathWithNullGaps(nicehashYs);
     // Share-log uses its own Y-scale (right-side axis), so it can't
     // share `pathWithNullGaps` above which closes over the left-axis
     // yScale. Build the path inline against shareLogYScale.
@@ -1376,6 +1384,9 @@ export const HashrateChart = memo(function HashrateChart({
       ys,
       datumYs,
       oceanYs,
+      nicehashYs,
+      hasNicehash,
+      nicehashPath,
       targets,
       floors,
       deliveredPath,
@@ -1681,7 +1692,7 @@ export const HashrateChart = memo(function HashrateChart({
     if (cs.tickAt < chartData.minX || cs.tickAt > chartData.maxX) return null;
     const i = nearestTickIndex(chartData.xs, cs.tickAt);
     if (i < 0) return null;
-    const { xScale, yScale, shareLogYScale, ys, datumYs, oceanYs, targets, floors, hasDatum, hasOcean, hasShareLog, rightAxis } = chartData;
+    const { xScale, yScale, shareLogYScale, ys, datumYs, oceanYs, nicehashYs, targets, floors, hasDatum, hasOcean, hasNicehash, hasShareLog, rightAxis } = chartData;
     const rows: CrosshairReadoutRow[] = [];
     const dots: Array<{ cy: number; color: string }> = [];
     const fmtHr = (v: number): React.ReactNode => withDimUnit(denomination.formatHashrate(v, intlLocale));
@@ -1696,9 +1707,16 @@ export const HashrateChart = memo(function HashrateChart({
       dots.push({ cy: yScale(datum), color: COLOR_DATUM });
     }
     const ocean = hasOcean ? oceanYs[i] ?? null : null;
+    const nicehash = hasNicehash ? nicehashYs[i] ?? null : null;
     if (ocean !== null) {
       rows.push({ color: COLOR_OCEAN, label: t`received (Ocean)`, value: fmtHr(ocean) });
       dots.push({ cy: yScale(ocean), color: COLOR_OCEAN });
+    }
+    // B4: NiceHash delivered in the same tooltip, so both venues can be read
+    // against Ocean's credited figure at a single point in time.
+    if (nicehash !== null && !isHidden('nicehash')) {
+      rows.push({ color: COLOR_NICEHASH, label: t`delivered (NiceHash)`, value: fmtHr(nicehash) });
+      dots.push({ cy: yScale(nicehash), color: COLOR_NICEHASH });
     }
     const target = targets[i];
     if (target !== undefined) {
@@ -1734,7 +1752,7 @@ export const HashrateChart = memo(function HashrateChart({
     );
   }
 
-  const { minX, maxX, dataMinX, dataMaxX, xScale, yScale, deliveredPath, datumPath, hasDatum, oceanPath, hasOcean, targetPath, floorPath, yTicks, xTickInterval, xTicks, hasShareLog, shareLogPath, shareLogYTicks, shareLogYScale, padRight, rightAxis, marketplaceEmptyIntervals, braiinsUnreachableIntervals, daemonOfflineIntervals } = chartData;
+  const { minX, maxX, dataMinX, dataMaxX, xScale, yScale, deliveredPath, datumPath, hasDatum, oceanPath, hasOcean, nicehashPath, hasNicehash, targetPath, floorPath, yTicks, xTickInterval, xTicks, hasShareLog, shareLogPath, shareLogYTicks, shareLogYScale, padRight, rightAxis, marketplaceEmptyIntervals, braiinsUnreachableIntervals, daemonOfflineIntervals } = chartData;
 
   return (
     <div className="bg-slate-900 border rounded-lg p-4 border-slate-800" data-chart-crosshair>
@@ -1760,6 +1778,9 @@ export const HashrateChart = memo(function HashrateChart({
           )}
           {hasOcean && (
             <Legend color={COLOR_OCEAN} label={t`received (Ocean)`} hidden={isHidden('ocean')} onToggle={() => toggle('ocean')} />
+          )}
+          {hasNicehash && (
+            <Legend color={COLOR_NICEHASH} label={t`delivered (NiceHash)`} hidden={isHidden('nicehash')} onToggle={() => toggle('nicehash')} />
           )}
           {hasShareLog && rightAxis && (
             <Legend color={rightAxis.stroke} label={rightAxis.axisLabel} hidden={isHidden('rightAxis')} onToggle={() => toggle('rightAxis')} />
@@ -2097,6 +2118,19 @@ export const HashrateChart = memo(function HashrateChart({
             d={oceanPath}
             stroke={COLOR_OCEAN}
             strokeWidth="1.6"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        {/* B4: NiceHash delivered - dashed so it reads distinctly against the
+            solid Braiins/Ocean lines even at similar magnitudes. */}
+        {hasNicehash && !isHidden('nicehash') && (
+          <path
+            d={nicehashPath}
+            stroke={COLOR_NICEHASH}
+            strokeWidth="1.6"
+            strokeDasharray="4 3"
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"

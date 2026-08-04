@@ -602,6 +602,12 @@ export const AppConfigSchema = z.object({
   nicehash_deep_liquidity_eh: z.number().nonnegative().default(1),
   /** #E: cumulative bottom-skip (EH/s) for the depth-aware fill line. 0 = off. */
   nicehash_fill_skip_bottom_eh: z.number().nonnegative().default(0),
+  /** B1: days-before-expiry lead time for the NiceHash order-expiry warning. 0 = off. */
+  nicehash_order_expiry_alert_days: z.number().int().nonnegative().default(3),
+  /** B6: JSON slab table (empty = built-in default). */
+  cheap_mode_slabs: z.string().default(''),
+  /** B6: 1 = slabs drive sizing for BOTH providers (supersedes legacy cheap mode). */
+  cheap_mode_slabs_enabled: z.boolean().default(false),
   /** #C/#F: alert when >this% of purchased hashrate isn't credited by Ocean. */
   hash_loss_variance_alert_pct: z.number().nonnegative().default(15),
   /** #C/#F: sustained window (minutes) before the hash-loss alert fires. */
@@ -772,6 +778,9 @@ export const APP_CONFIG_DEFAULTS: Omit<
   nicehash_min_delivered_ph: 0.1,
   nicehash_deep_liquidity_eh: 1,
   nicehash_fill_skip_bottom_eh: 0,
+  nicehash_order_expiry_alert_days: 3,
+  cheap_mode_slabs: '',
+  cheap_mode_slabs_enabled: false,
   hash_loss_variance_alert_pct: 15,
   hash_loss_alert_after_minutes: 30,
   braiins_fee_pct: 0,

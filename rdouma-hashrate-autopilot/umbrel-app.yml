@@ -7,7 +7,7 @@ manifestVersion: 1
 id: rdouma-hashrate-autopilot
 category: bitcoin
 name: Hashrate Autopilot
-version: "1.18.15"
+version: "1.18.16"
 tagline: Autopilot for renting hashrate to mine on Ocean Mining
 icon: https://raw.githubusercontent.com/rdouma/hashrate-autopilot/main/assets/icon-512.png
 # Umbrel renders description literally - no YAML folding of soft
@@ -53,6 +53,17 @@ defaultPassword: ""
 submitter: Remco Douma
 submission: https://github.com/rdouma/hashrate-autopilot
 releaseNotes: |
+  v1.18.16 - lifetime NiceHash P&L, slab-based sizing for both venues, and clearer signal when a NiceHash order needs your hand.
+
+  NEW
+  - Slab-based sizing across BOTH venues: replace the old Braiins-only cheap mode with an operator-editable table keyed on fee-inclusive price as a % of hashprice (default: under 100% -> 3 PH, 100-101% -> 2.5, 101-102% -> 2, 102-103% -> 1.5, 103-104% -> 1, above 104% -> park). Applies to whichever venue is cheaper, and now actually parks BOTH venues when the market is uneconomic - which nothing did before. Off by default; enable under Config.
+  - NiceHash order-expiry warning: the Next Action card now shows a countdown once an order is within its configured lead time (default 3 days) of expiring, so an order that needs manual renewal can't lapse silently.
+
+  FIXED
+  - Lifetime P&L no longer drops NiceHash spend when an order rotates out. It previously counted only the CURRENT order's paid amount, so a completed or expired order's spend vanished the moment a new order replaced it, making the position look more profitable than it was. Spend is now summed across every order NiceHash returns (active + terminal), with terminal orders cached so the figure survives rotation.
+  - "NiceHash order creation blocked by 2FA" was never actually confirmed - an API key with the marketplace order-create permission enabled does not hit an interactive 2FA prompt (same as Braiins' owner-token path). A failed CREATE now surfaces NiceHash's actual rejection reason instead of guessing.
+  - Hashrate-chart data now carries a NiceHash-delivered series (nicehash_delivered_ph) end to end through the metrics API, ready for the chart to plot it as its own line alongside Braiins/Datum/Ocean.
+
   v1.18.15 - honest economics: cost is now measured on what OCEAN credits, plus fixes for price oscillation, the supplement trigger and the fill-line filters.
 
   IMPORTANT - your true cost may be higher than earlier builds showed
@@ -60,6 +71,8 @@ releaseNotes: |
   - New "paid vs ocean variance" tile: the share of the hashrate you PAID FOR that Ocean never credited (rejections, routing, stale shares, latency). Green under 5%, amber to 10%, red above. This is the number to watch - sustained double digits mean a venue is billing for hashrate that doesn't reach the pool.
 
   FIXED
+  - NiceHash target hashrate is no longer forced to 2 PH. The daemon rounded your target to a whole number, so 1.5 became 2 - and it re-applied that to every order, including one created manually at 1 PH. Fractional targets (1.5, 2.5) now work exactly as entered.
+  - Both marketplaces no longer bill in full while NiceHash is being parked. Parking drops the price one capped step per 10-minute cooldown, so a wide gap could keep NiceHash delivering for an hour while Braiins was already running. The order's speed limit (which applies instantly, with no cooldown) is now cut to 1 PH the moment NiceHash stops being the active venue, capping the overlap while the price walks down.
   - Overpay no longer strands the order above the fill line. The NiceHash price tracks down toward the fill line in the usual capped 200 sat/PH/day steps. The 27 Jul collapse (a trim at full delivery losing almost all supply) was caused by the fill line anchoring on scraps, which the dust floor and bottom skip fix at source - so the price can descend safely again instead of paying a permanent ~900 sat/PH/day spread.
   - A "paid for but not delivered" ALERT: fires when more of the hashrate you are paying for than your threshold goes uncredited by Ocean, sustained for your chosen window (defaults: 15% over 30 minutes). Configure the percentage under Pricing and the window on the Alerts page. Sustained-gated on purpose - Ocean's hashrate is a 5-minute trailing average, so short spikes are measurement lag, not a leak.
   - AVG NICEHASH is now a duration-weighted average over the selected range, like AVG BRAIINS and AVG OCEAN - and it counts ticks where the order delivered nothing, so downtime drags it down. It previously showed the LIVE accepted speed, which could not be meaningfully compared against a range-averaged Ocean figure.

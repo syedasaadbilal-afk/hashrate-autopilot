@@ -187,6 +187,16 @@ export function decide(state: State): readonly Proposal[] {
     config.cheap_threshold_pct > 0 &&
     config.cheap_target_hashrate_ph > config.target_hashrate_ph;
   let effectiveTargetPh = config.target_hashrate_ph;
+  // B6: when slab mode is on it OWNS sizing - the fee-inclusive price as a %
+  // of hashprice picks the target, and above the top slab we buy nothing.
+  // Parking here means cancelling/not-raising the Braiins bid, mirroring the
+  // NiceHash park, so an uneconomic market costs us nothing on either venue.
+  if (state.slab_park === true) {
+    return [];
+  }
+  if (state.slab_target_ph != null && state.slab_target_ph > 0) {
+    effectiveTargetPh = state.slab_target_ph;
+  }
   let cheapModeActive = false;
   if (cheapEnabled) {
     if (config.cheap_sustained_window_minutes > 0) {

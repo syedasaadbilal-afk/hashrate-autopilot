@@ -23,6 +23,7 @@ import { executeNicehash, type ExecuteNicehashResult } from './execute-nicehash.
 import { gate } from './gate.js';
 import { observe, type ObserveDeps } from './observe.js';
 import { computeParkPrice } from './park.js';
+import { decideSlabTarget, parseSlabs } from './price-slabs.js';
 import { decidePauseEvent } from './pause-events.js';
 import type { Provider, ProviderSelectState } from './provider-select.js';
 import type { NiceHashLiveParams, NiceHashService } from '../services/nicehash-service.js';
@@ -81,6 +82,8 @@ export interface ProviderEvaluationSnapshot {
     readonly acceptedSpeedPh: number | null;
     readonly limitPh: number | null;
     readonly status: string | null;
+    /** B1: order expiry, epoch ms, best-effort - see NiceHashOrderSnapshot.expiresAtMs. */
+    readonly expiresAtMs: number | null;
   } | null;
   /**
    * Exact seconds left on NiceHash's 10-min price-DECREASE cooldown, as
@@ -100,6 +103,28 @@ export interface TickResult {
 }
 
 
+
+/**
+ * v1.18.16: safety margin added when arming NiceHash's 10-minute price-DECREASE
+ * cooldown. We arm from `state.tick_at`, but NiceHash starts ITS timer when it
+ * PROCESSES the change - a beat later - so our window expires marginally early
+ * and the next attempt is rejected with 5061 "Seconds till available: 1".
+ * Observed live 2026-07-31: 72 rejected calls (29 EDIT_PRICE + 43 PARK), every
+ * one of them missing by a single second. Ticks are ~60 s apart, so waiting an
+ * extra few seconds costs nothing - the decrease would land on the next tick
+ * regardless - but it turns 72 wasted API calls into zero.
+ */
+const NICEHASH_COOLDOWN_SAFETY_MS = 15_000;
+
+/**
+ * v1.18.16: back-off after a REFILL is rejected. Live 2026-08-02/03 the NiceHash
+ * wallet ran dry, the refill 409'd with 3001 "Insufficient balance in account",
+ * and the daemon simply retried EVERY TICK - 140 such calls, after which
+ * NiceHash began rejecting with 5102 "Order refill too frequent" (another 220).
+ * 360 failed calls for one problem. A refill is never urgent to the second, so
+ * on ANY refill rejection we stand down for this long before trying again.
+ */
+const NICEHASH_REFILL_BACKOFF_MS = 15 * 60_000;
 
 export class Controller {
   private belowFloorSince: number | null = null;
@@ -140,7 +165,13 @@ export class Controller {
    */
   private nicehashSupplement: 'OFF' | 'ON' | 'UNWINDING' = 'OFF';
 
+  /** B6: latest slab sizing decision (null when slab mode is disabled). */
+  private slabDecision: ReturnType<typeof decideSlabTarget> | null = null;
 
+  /** B6: expose the slab decision to the status API / dashboard. */
+  getSlabDecision(): ReturnType<typeof decideSlabTarget> | null {
+    return this.slabDecision;
+  }
 
   /**
    * #dual-provider: epoch-ms until NiceHash's 10-min price-DECREASE cooldown
@@ -151,6 +182,11 @@ export class Controller {
    * hammering the API, and feeds the remaining-seconds shown in Next Action.
    */
   private nicehashDecreaseCooldownUntilMs: number | null = null;
+
+  /** v1.18.16: suppress REFILL until this epoch-ms after a rejected refill. */
+  private nicehashRefillBackoffUntilMs: number | null = null;
+  /** v1.18.16: last refill rejection reason, for the Next Action card. */
+  private nicehashRefillBlockReason: string | null = null;
 
   /**
    * #dual-provider: last NiceHash order price we observed (sat/PH/day), so we
@@ -217,6 +253,10 @@ export class Controller {
       // #56: while supplementing (ON or unwinding), Braiins must stay live -
       // decide() reads this to skip parking. One tick behind, like the above.
       nicehashSupplementActive: this.nicehashSupplement !== 'OFF',
+      // B6: slab sizing from the previous tick's evaluation (same one-tick lag
+      // as activeProvider), so decide() sizes/parks Braiins consistently.
+      slabTargetPh: this.slabDecision?.targetPh ?? null,
+      slabPark: this.slabDecision?.park ?? false,
     });
     this.belowFloorSince = state.below_floor_since;
     this.aboveFloorTicks = state.above_floor_ticks;
@@ -554,6 +594,30 @@ export class Controller {
     // in-flight parked bid unwinds cleanly; it is now permanently OFF.
     this.nicehashSupplement = 'OFF';
 
+    // B6: slab sizing on the ACTIVE venue's fee-inclusive price as a % of
+    // hashprice. Drives BOTH providers - and parks everything when the
+    // market is above the top slab (previously nothing parked on "too
+    // expensive", it just kept buying at the ceiling).
+    const slabActiveIsNicehash = this.activeProvider === 'NICEHASH';
+    const slabPrice = slabActiveIsNicehash
+      ? evald.nicehashEffectiveSatPerPhDay
+      : evald.braiinsEffectiveSatPerPhDay;
+    const slabFeePct = slabActiveIsNicehash ? (cfg.nicehash_fee_pct ?? 0) : (cfg.braiins_fee_pct ?? 0);
+    this.slabDecision = cfg.cheap_mode_slabs_enabled
+      ? decideSlabTarget({
+          effectivePriceSatPerPhDay: slabPrice,
+          feePct: slabFeePct,
+          hashpriceSatPerPhDay: state.hashprice_sat_per_ph_day,
+          slabs: parseSlabs(cfg.cheap_mode_slabs),
+          fallbackTargetPh: slabActiveIsNicehash
+            ? cfg.nicehash_target_hashrate_ph
+            : cfg.target_hashrate_ph,
+        })
+      : null;
+    if (this.slabDecision) {
+      console.info(`[slab] ${this.slabDecision.reason}`);
+    }
+
     this.lastProviderEvaluation = {
       at: state.tick_at,
       activeProvider: seededProvider,
@@ -608,6 +672,7 @@ export class Controller {
               acceptedSpeedPh: snapshot.acceptedSpeedPh,
               limitPh: snapshot.limitPh,
               status: snapshot.statusCode,
+              expiresAtMs: snapshot.expiresAtMs,
             },
           };
         }
@@ -732,20 +797,155 @@ export class Controller {
         // so NiceHash + the un-parked Braiins bid sum to ~2 PH instead of
         // doubling up; restored to the target automatically once the machine
         // returns to OFF (so NiceHash is never left stuck at 1 PH).
-        const nicehashTargetLimitPh = Math.max(1, Math.round(cfg.nicehash_target_hashrate_ph));
+        // BUG (v1.18.15): this used Math.round(), so a 1.5 PH target became 2 PH
+        // and the daemon silently forced every order back to 2 - including one the
+        // operator had manually created at 1 PH. NiceHash's `limit` is EH with 8
+        // decimals (0.00150000 = 1.5 PH), so fractional targets are perfectly
+        // legal; the rounding was never needed. Honour the configured value
+        // exactly, with a small positive floor so a zero/blank config can't submit
+        // an invalid limit.
+        // B6: the slab table sizes the order when enabled; otherwise the
+        // configured NiceHash target applies.
+        const nicehashTargetLimitPh = Math.max(
+          0.01,
+          this.slabDecision && !this.slabDecision.park
+            ? this.slabDecision.targetPh
+            : cfg.nicehash_target_hashrate_ph,
+        );
         // #A (v1.18.14): do NOT throttle the NiceHash limit during a supplement.
         // Throttling to 1 PH saved nothing (NiceHash bills only for hashrate
         // actually delivered) and it capped recovery, hiding whether the market
         // had healed. Braiins simply tops up the shortfall instead.
-        const nicehashDesiredLimitPh = nicehashTargetLimitPh;
+        // BUG (v1.18.15): while NiceHash is being PARKED, Braiins un-parks
+        // immediately but NiceHash keeps delivering for as long as the price
+        // descent takes - one capped 200 sat/PH/day step per 10-minute cooldown,
+        // so a large gap can bleed for an hour with BOTH venues billing at once.
+        // The order LIMIT has no cooldown and takes effect instantly, so we cut it
+        // to the floor the moment NiceHash stops being the active provider. That
+        // caps the overlap at ~1 PH instead of the full target while the price
+        // walks down to the park level. Restored to the full target automatically
+        // when NiceHash becomes active again.
+        // B6: park when the market is above the top slab, regardless of which
+        // venue is "cheaper" - cheaper-but-still-loss-making is still a loss.
+        const nicehashParking =
+          this.activeProvider !== 'NICEHASH' || this.slabDecision?.park === true;
+        const nicehashDesiredLimitPh = nicehashParking
+          ? Math.min(1, nicehashTargetLimitPh)
+          : nicehashTargetLimitPh;
+        if (nicehashParking && nicehashTargetLimitPh > 1) {
+          console.info(
+            `[nicehash] parking - limit cut to ${nicehashDesiredLimitPh} PH (from ` +
+              `${nicehashTargetLimitPh}) so both venues don't bill in full during the price descent`,
+          );
+        }
+
+        // v1.18.16: suppress REFILL while backing off from a rejection. Without
+        // this the daemon retried a doomed refill every 60 s - 360 failed calls
+        // over 2026-08-02/03 (140x 3001 "Insufficient balance", then 220x 5102
+        // "Order refill too frequent" once NiceHash rate-limited us). The order
+        // keeps running on its existing budget meanwhile; a refill is never
+        // urgent to the second.
+        const refillBackedOff =
+          this.nicehashRefillBackoffUntilMs !== null &&
+          state.tick_at < this.nicehashRefillBackoffUntilMs;
+        const actionsToRun = refillBackedOff
+          ? actions.filter((a) => a.kind !== 'REFILL')
+          : actions;
+        if (refillBackedOff && actions.some((a) => a.kind === 'REFILL')) {
+          const mins = Math.ceil((this.nicehashRefillBackoffUntilMs! - state.tick_at) / 60_000);
+          console.info(
+            `[nicehash] refill suppressed for ~${mins} min after a rejection` +
+              `${this.nicehashRefillBlockReason ? ` (${this.nicehashRefillBlockReason})` : ''}`,
+          );
+        }
 
         const nhResults = await executeNicehash(
           svc,
-          actions,
+          actionsToRun,
           state.run_mode,
           params,
           nicehashDesiredLimitPh,
         );
+
+        // v1.18.16: arm the back-off on ANY refill rejection, and surface the
+        // cause. 3001 "Insufficient balance in account" is an OPERATOR problem -
+        // the NiceHash wallet needs topping up - so it must be visible, not
+        // buried in a log line repeated 140 times.
+        const refillFailure = nhResults.find(
+          (r, i) => actionsToRun[i]?.kind === 'REFILL' && r.outcome === 'FAILED',
+        );
+        if (refillFailure) {
+          this.nicehashRefillBackoffUntilMs = state.tick_at + NICEHASH_REFILL_BACKOFF_MS;
+          const note = refillFailure.note ?? '';
+          this.nicehashRefillBlockReason = /3001|Insufficient balance/i.test(note)
+            ? 'NiceHash wallet has insufficient balance - top it up'
+            : /5102|too frequent/i.test(note)
+              ? 'NiceHash rate-limited the refill (too frequent)'
+              : note.slice(0, 160);
+          console.warn(
+            `[nicehash] REFILL rejected - backing off ${NICEHASH_REFILL_BACKOFF_MS / 60_000} min: ` +
+              this.nicehashRefillBlockReason,
+          );
+          if (this.lastProviderEvaluation) {
+            this.lastProviderEvaluation = {
+              ...this.lastProviderEvaluation,
+              nicehashAction: `NiceHash REFILL blocked: ${this.nicehashRefillBlockReason}`,
+            };
+          }
+        } else if (nhResults.some((r, i) => actionsToRun[i]?.kind === 'REFILL' && r.outcome === 'EXECUTED')) {
+          this.nicehashRefillBackoffUntilMs = null;
+          this.nicehashRefillBlockReason = null;
+        }
+
+        // B1: when a CREATE fails LIVE, don't guess why (the original theory
+        // here was "2FA required," but an operator API key with the
+        // marketplace order-create permission enabled does NOT get an
+        // interactive 2FA prompt - same as Braiins' owner-token path (see
+        // migration 0083). Surface NiceHash's ACTUAL rejection instead, so
+        // the operator sees the real cause (bad pool id, sub-minimum amount,
+        // price/limit rejection, etc.) rather than a guess. Falls through to
+        // the auto-generated `nhActionSummary` unless a CREATE specifically
+        // failed this tick.
+        const createFailure = nhResults.find(
+          (r, i) => actions[i]?.kind === 'CREATE' && r.outcome === 'FAILED',
+        );
+        if (createFailure && this.lastProviderEvaluation) {
+          this.lastProviderEvaluation = {
+            ...this.lastProviderEvaluation,
+            nicehashAction:
+              `NiceHash REJECTED order creation - create it manually on the NiceHash ` +
+              `website until this is resolved. Reason reported: ${createFailure.note}`,
+          };
+        }
+
+        // B1: order-expiry countdown. Loud, always-on warning appended to
+        // whatever the Next Action text currently says once the order is
+        // within `nicehash_order_expiry_alert_days` of expiring - so an order
+        // that's about to lapse (and can't be auto-renewed, e.g. because
+        // creation needs manual 2FA/verification) never lapses silently.
+        // Best-effort: only fires when expiresAtMs was parseable - see the
+        // caveat on NiceHashOrderSnapshot.expiresAtMs.
+        if (snapshot.exists && this.lastProviderEvaluation) {
+          const expiresAtMs = this.lastProviderEvaluation.nicehashOrder?.expiresAtMs ?? null;
+          const alertDays = cfg.nicehash_order_expiry_alert_days;
+          if (expiresAtMs !== null && alertDays > 0) {
+            const msLeft = expiresAtMs - state.tick_at;
+            const daysLeft = msLeft / (24 * 60 * 60 * 1000);
+            if (daysLeft <= alertDays) {
+              const roundedDays = Math.max(0, Math.round(daysLeft * 10) / 10);
+              const expiryNote =
+                msLeft <= 0
+                  ? `⚠️ NiceHash order has EXPIRED - create a new one manually (2FA may block API creation; see above)`
+                  : `⚠️ NiceHash order expires in ~${roundedDays}d - refill or renew before it lapses`;
+              this.lastProviderEvaluation = {
+                ...this.lastProviderEvaluation,
+                nicehashAction: this.lastProviderEvaluation.nicehashAction
+                  ? `${this.lastProviderEvaluation.nicehashAction} · ${expiryNote}`
+                  : expiryNote,
+              };
+            }
+          }
+        }
 
         // #52: record executed NiceHash order/price events into bid_events so
         // the Timeline reflects them alongside Braiins (provider='NICEHASH').
@@ -784,7 +984,7 @@ export class Controller {
         if (priceDropped) {
           cooldownUntil = Math.max(
             cooldownUntil ?? 0,
-            state.tick_at + NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS,
+            state.tick_at + NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS + NICEHASH_COOLDOWN_SAFETY_MS,
           );
         }
 
@@ -807,14 +1007,18 @@ export class Controller {
         if (executedDecrease) {
           cooldownUntil = Math.max(
             cooldownUntil ?? 0,
-            state.tick_at + NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS,
+            state.tick_at + NICEHASH_DEFAULT_PRICE_DECREASE_COOLDOWN_MS + NICEHASH_COOLDOWN_SAFETY_MS,
           );
         }
 
         // (3) Exact remaining from a rejection overrides the estimate.
         for (const r of nhResults) {
           if (r.cooldownSecondsLeft !== undefined) {
-            cooldownUntil = state.tick_at + r.cooldownSecondsLeft * 1000;
+            // NiceHash truncates the remaining seconds ("1" can mean 1.9 s), so
+            // honour its figure plus the same margin rather than firing on the
+            // exact boundary and being rejected again.
+            cooldownUntil =
+              state.tick_at + r.cooldownSecondsLeft * 1000 + NICEHASH_COOLDOWN_SAFETY_MS;
           }
         }
         this.nicehashDecreaseCooldownUntilMs = cooldownUntil ?? null;

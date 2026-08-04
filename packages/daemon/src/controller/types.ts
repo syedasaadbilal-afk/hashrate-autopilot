@@ -178,6 +178,10 @@ export interface State {
    * observational, never read by the control loop.
    */
   readonly ocean_hashrate_ph: number | null;
+  /** B6: slab-chosen target (PH/s) for this tick; null = slab mode off. */
+  readonly slab_target_ph?: number | null;
+  /** B6: slab says the market is uneconomic - park BOTH venues. */
+  readonly slab_park?: boolean;
 
   /**
    * Ocean's `share_log` percentage at this tick (e.g. 0.0182 for

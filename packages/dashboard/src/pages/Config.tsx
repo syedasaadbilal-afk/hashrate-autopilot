@@ -170,6 +170,20 @@ function useSections(): Section[] {
         description: t`When our bid drops below the break-even hashprice from Ocean, scale up to a higher target so we capture more hashrate while it's cheap. Tick "Enable cheap mode" to edit the fields below.`,
         fields: [
           {
+            // B6: slab mode - sizing driven by fee-inclusive price vs hashprice,
+            // applied to whichever venue is active.
+            key: 'cheap_mode_slabs_enabled',
+            label: t`Use price slabs (both marketplaces)`,
+            kind: 'boolean',
+            help: t`Replaces the single cheap-mode threshold below with a table: how much hashrate to buy depends on how expensive it is versus break-even, INCLUDING marketplace fees. Applies to whichever marketplace is currently cheaper. Above the top slab the autopilot buys nothing and parks BOTH venues - the only setting that stops it buying hashrate that loses money.`,
+          },
+          {
+            key: 'cheap_mode_slabs',
+            label: t`Price slabs (JSON)`,
+            kind: 'text',
+            help: t`Slab table as JSON: [{"maxPct":100,"targetPh":3},{"maxPct":101,"targetPh":2.5},{"maxPct":102,"targetPh":2},{"maxPct":103,"targetPh":1.5},{"maxPct":104,"targetPh":1}]. maxPct is the fee-inclusive price as a % of hashprice (exclusive upper bound); targetPh is the hashrate to buy in that band. Anything above the last slab parks. Leave blank to use this default table.`,
+          },
+          {
             key: 'cheap_target_hashrate_ph',
             label: t`Cheap-mode target`,
             kind: 'decimal',

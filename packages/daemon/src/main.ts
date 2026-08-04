@@ -33,6 +33,7 @@ import { createSetupModeServer, type SetupModeServer } from './setup-mode.js';
 import { SecretsRepo } from './state/repos/secrets.js';
 import { createHttpServer } from './http/server.js';
 import { AccountSpendService } from './services/account-spend.js';
+import { NiceHashSpendService } from './services/nicehash-spend.js';
 import { RetentionService } from './services/retention.js';
 import { BtcPriceService } from './services/btc-price.js';
 import { BtcPriceRefresher } from './services/btc-price-refresher.js';
@@ -57,6 +58,7 @@ import { BraiinsDepositsRepo } from './state/repos/braiins_deposits.js';
 import { SoloMinersRepo } from './state/repos/solo_miners.js';
 import { AxeOSPoller } from './services/axeos-poller.js';
 import { ClosedBidsCacheRepo } from './state/repos/closed_bids_cache.js';
+import { NicehashOrdersCacheRepo } from './state/repos/nicehash_orders_cache.js';
 import { ConfigRepo } from './state/repos/config.js';
 import { PoolBlocksRepo } from './state/repos/pool_blocks.js';
 import { RewardEventsRepo } from './state/repos/reward_events.js';
@@ -111,6 +113,8 @@ interface BootDeps {
   readonly rewardEventsRepo: RewardEventsRepo;
   readonly oceanPayoutsRepo: OceanPayoutsRepo;
   readonly closedBidsCacheRepo: ClosedBidsCacheRepo;
+  /** B2: persistent cache of terminal NiceHash orders' payedAmount. */
+  readonly nicehashOrdersCacheRepo: NicehashOrdersCacheRepo;
   readonly secretsRepo: SecretsRepo;
   readonly secretsPath: string;
   readonly ageKeyPath: string;
@@ -221,6 +225,7 @@ async function main(): Promise<void> {
     rewardEventsRepo: new RewardEventsRepo(handle.db),
     oceanPayoutsRepo: new OceanPayoutsRepo(handle.db),
     closedBidsCacheRepo: new ClosedBidsCacheRepo(handle.db),
+    nicehashOrdersCacheRepo: new NicehashOrdersCacheRepo(handle.db),
     secretsRepo: new SecretsRepo(handle.db, secretCrypto),
     secretsPath,
     ageKeyPath,
@@ -382,6 +387,7 @@ async function bootOperational(
     rewardEventsRepo,
     oceanPayoutsRepo,
     closedBidsCacheRepo,
+    nicehashOrdersCacheRepo,
     secretsPath,
     ageKeyPath,
   } = deps;
@@ -1104,6 +1110,24 @@ async function bootOperational(
   const accountSpend = new AccountSpendService(braiinsClient, closedBidsCacheRepo);
   // (btcPriceService constructed earlier so the controller can use it.)
 
+  // B2: NiceHash lifetime spend tracker - mirrors accountSpend above, but for
+  // NiceHash orders. null when NiceHash credentials aren't configured (same
+  // gate as nicehashService itself). Algorithm/market are re-read from config
+  // on every fetch (not fixed at construction) so a live Config-page edit to
+  // nicehash_market takes effect without a restart; an unset market falls
+  // back to resolving it from the order book the same way tick.ts does.
+  const nicehashSpend = nicehashService
+    ? new NiceHashSpendService(nicehashService, nicehashOrdersCacheRepo, async () => {
+        const c = await configRepo.get();
+        if (!c?.nicehash_enabled || !c.nicehash_algorithm) return null;
+        if (c.nicehash_market) {
+          return { algorithm: c.nicehash_algorithm, market: c.nicehash_market };
+        }
+        const book = await nicehashService!.getMarketBook(c.nicehash_algorithm);
+        return book ? { algorithm: c.nicehash_algorithm, market: book.market } : null;
+      })
+    : null;
+
   // Append-only log retention. Periodically prunes tick_metrics +
   // decisions rows older than the configured cutoffs. Runs once on
   // boot + every hour thereafter (issue #21).
@@ -1196,6 +1220,7 @@ async function bootOperational(
     payoutObserver,
     oceanClient,
     accountSpend,
+    nicehashSpend,
     btcPriceService,
     hashpriceCache,
     chainTipPoller,

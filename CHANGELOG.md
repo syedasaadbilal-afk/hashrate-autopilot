@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-07-31 (lifetime NiceHash P&L, slab sizing, order-expiry signal)
+
+### `[Release]` v1.18.16
+
+Implements B2, B6, B1, and the data half of B4 from the v1.18.16 backlog (see `V14-ISSUES-LOG.md`). Session context: v1.18.15 was built and verified (197/197 tests) but never deployed - the docker-compose image pin is still `1.17.3`, so nothing below has gone through the real release sequence (tag / GHCR publish / verify / push main) yet. This entry documents the code changes only.
+
+### `[Fix]` Lifetime P&L no longer drops NiceHash spend when an order rotates out (B2)
+
+`spent_nicehash_sat` (feeding both `/api/finance`'s `spent_sat` and the P&L panel) previously came from the CURRENT order's `payedAmount` only, via the live provider-evaluation snapshot. A completed or expired order's spend vanished entirely the moment a new order replaced it, understating true lifetime spend - real money, not a display bug. New `NiceHashSpendService` (mirrors `AccountSpendService`, the Braiins-side equivalent exactly) sums `payedAmount` across every order NiceHash's `getMyOrders` returns for the configured algorithm/market - active AND terminal (CANCELLED/COMPLETED/DEAD/EXPIRED). Terminal orders are cached once in a new `nicehash_orders_cache` table (migration 0130) since their spend is immutable, so steady-state refreshes don't re-fetch history; the active order is always read live. Falls back to the old current-order-only figure if the lifetime fetch is unavailable, so this can't regress below what v1.18.15 already showed.
+
+Caveat: NiceHash's `getMyOrders` has no confirmed cursor field in this client for paging past a single page, so this fetches `limit=500` in one call - comfortably covers a realistic lifetime order count for one algorithm/market, but doesn't paginate further. Documented in `NiceHashService.getAllOrdersSpend`.
+
+### `[Feature]` Slab-based sizing across BOTH providers (B6)
+
+Replaces the Braiins-only cheap mode with a provider-agnostic table keyed on fee-inclusive price as a % of hashprice, applied to whichever venue is currently cheaper. Operator's default table: `<100% -> 3 PH`, `100-101% -> 2.5`, `101-102% -> 2`, `102-103% -> 1.5`, `103-104% -> 1`, `>104% -> PARK`. Also subsumes "park when uneconomic," which nothing did before - previously an above-ceiling market just kept buying at the cap. Operator-editable as JSON in `config.cheap_mode_slabs`; gated off by default via `cheap_mode_slabs_enabled` (migration 0131) so the legacy cheap-mode knobs keep working for anyone who prefers them. New `packages/daemon/src/controller/price-slabs.ts` (`parseSlabs`, `decideSlabTarget`) with a full unit-test suite. No dashboard Config-page control yet for the two new fields - set via the config API or `BHA_CHEAP_MODE_SLABS[_ENABLED]` env for now.
+
+### `[Fix]` NiceHash order-creation failure now surfaces the real reason, not a 2FA guess (B1)
+
+The prior working theory ("NiceHash requires 2FA/OTP for order creation") was never actually confirmed - it was inferred from a single incident where the operator had to create an order manually. An API key with the marketplace "place, refill and cancel" permission enabled does not hit an interactive 2FA prompt, the same way Braiins' owner-token path bypasses 2FA (see migration 0083). A failed LIVE `CREATE` now surfaces NiceHash's actual rejection (status + body, already captured by `executeNicehash`) in the Next Action text instead of a generic message.
+
+### `[Feature]` NiceHash order-expiry countdown (B1)
+
+Best-effort: NiceHash's `myOrders` response carries an unconfirmed expiry field (this client's `NiceHashMyOrder` type has no typed/verified expiry field yet), so `parseExpiresAtMs` defensively tries a handful of candidate field names and only trusts one that parses to a plausible near-term timestamp. When within `nicehash_order_expiry_alert_days` (new config field, default 3, migration 0132) of expiring, the Next Action card shows a loud countdown so an order that can't be auto-renewed doesn't lapse silently.
+
+### `[Infra]` NiceHash-delivered series threaded through `/api/metrics` (B4, partial)
+
+`tick_metrics.nicehash_delivered_ph` (captured since migration 0126) is now aggregated through `TickMetricsRepo.listAggregated` and exposed on `/api/metrics` as `nicehash_delivered_ph`, the same AVG-over-bucket treatment as `datum_hashrate_ph` / `ocean_hashrate_ph`. Data-layer only - the dashboard Hashrate chart doesn't plot it yet, and the NiceHash rejection series from the same backlog item isn't started (it needs NiceHash's per-order stats endpoint, which isn't confirmed against a live response - a research task, not a blind implementation).
+
+### `[Fix]` Stale migration list in `db.test.ts` (pre-existing, unrelated to this session)
+
+The `applies every bundled migration on a fresh DB` test's hardcoded migration list stopped at `0120_deduced_payouts.sql` and was never updated through the v1.18.13-15 dual-provider work (migrations 0121-0129). Brought current, including the new 0130-0132 from this release.
+
 ## 2026-07-27 (honest economics + live-observation fixes)
 
 ### `[Release]` v1.18.15

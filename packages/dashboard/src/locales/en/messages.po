@@ -1754,6 +1754,10 @@ msgstr "delivered"
 msgid "delivered (Braiins)"
 msgstr "delivered (Braiins)"
 
+#: src/components/HashrateChart.tsx
+msgid "delivered (NiceHash)"
+msgstr "delivered (NiceHash)"
+
 #: src/pages/Status.tsx
 msgid "delivered / cap"
 msgstr "delivered / cap"
@@ -3993,6 +3997,10 @@ msgid "Price right-axis line"
 msgstr "Price right-axis line"
 
 #: src/pages/Config.tsx
+msgid "Price slabs (JSON)"
+msgstr "Price slabs (JSON)"
+
+#: src/pages/Config.tsx
 msgid "Price source"
 msgstr "Price source"
 
@@ -4222,6 +4230,10 @@ msgstr "Reordered · {0} items, none added or removed"
 #: src/pages/Config.tsx
 msgid "Replace file…"
 msgstr "Replace file…"
+
+#: src/pages/Config.tsx
+msgid "Replaces the single cheap-mode threshold below with a table: how much hashrate to buy depends on how expensive it is versus break-even, INCLUDING marketplace fees. Applies to whichever marketplace is currently cheaper. Above the top slab the autopilot buys nothing and parks BOTH venues - the only setting that stops it buying hashrate that loses money."
+msgstr "Replaces the single cheap-mode threshold below with a table: how much hashrate to buy depends on how expensive it is versus break-even, INCLUDING marketplace fees. Applies to whichever marketplace is currently cheaper. Above the top slab the autopilot buys nothing and parks BOTH venues - the only setting that stops it buying hashrate that loses money."
 
 #: src/pages/History.tsx
 msgid "reset"
@@ -4614,6 +4626,10 @@ msgstr "signing in…"
 #: src/components/Bip110ScanCard.tsx
 msgid "size"
 msgstr "size"
+
+#: src/pages/Config.tsx
+msgid "Slab table as JSON: [{\"maxPct\":100,\"targetPh\":3},{\"maxPct\":101,\"targetPh\":2.5},{\"maxPct\":102,\"targetPh\":2},{\"maxPct\":103,\"targetPh\":1.5},{\"maxPct\":104,\"targetPh\":1}]. maxPct is the fee-inclusive price as a % of hashprice (exclusive upper bound); targetPh is the hashrate to buy in that band. Anything above the last slab parks. Leave blank to use this default table."
+msgstr "Slab table as JSON: [{\"maxPct\":100,\"targetPh\":3},{\"maxPct\":101,\"targetPh\":2.5},{\"maxPct\":102,\"targetPh\":2},{\"maxPct\":103,\"targetPh\":1.5},{\"maxPct\":104,\"targetPh\":1}]. maxPct is the fee-inclusive price as a % of hashprice (exclusive upper bound); targetPh is the hashrate to buy in that band. Anything above the last slab parks. Leave blank to use this default table."
 
 #: src/pages/Config.tsx
 msgid "Sound"
@@ -5072,6 +5088,10 @@ msgstr "Uptime"
 #: src/components/Layout.tsx
 msgid "USD unavailable: BTC/USD oracle is not responding right now. Check Config → Pool & Payout → BTC Price Oracle (use the Test connection button)."
 msgstr "USD unavailable: BTC/USD oracle is not responding right now. Check Config → Pool & Payout → BTC Price Oracle (use the Test connection button)."
+
+#: src/pages/Config.tsx
+msgid "Use price slabs (both marketplaces)"
+msgstr "Use price slabs (both marketplaces)"
 
 #: src/pages/Config.tsx
 msgid "Used by the on-chain payout balance check (when \"Bitcoin Knots RPC\" is selected as the backend above), AND by the <0>BIP 110</0> yellow-cube marker on the Hashrate chart and the BIP 110 scan card on Status - those last two call bitcoind regardless of which payout backend is selected. The Test button below validates the values currently in the form, before saving."

@@ -144,11 +144,14 @@ export interface FinanceDeps {
   /** #323: provides the collected computing/ready/idle status for the panel. */
   readonly oceanPayoutsService: OceanPayoutsService;
   /**
-   * #dual-provider: current NiceHash order spend in sats (consumed BTC ×1e8),
-   * or null when there's no order. Decoupled from the controller type - wired
-   * in server.ts from the latest provider evaluation.
+   * B2 (was #dual-provider): LIFETIME NiceHash order spend in sats, summed
+   * across active + terminal orders (see NiceHashSpendService) - not just the
+   * current order. Async because a cache-miss may re-fetch from NiceHash.
+   * null when there's no usable NiceHash data (dual-provider off, or the
+   * lifetime fetch has never succeeded). Decoupled from the controller type -
+   * wired in server.ts.
    */
-  readonly nicehashSpentSat?: () => number | null;
+  readonly nicehashSpentSat?: () => Promise<number | null>;
 }
 
 /**
@@ -349,9 +352,11 @@ export async function registerFinanceRoute(
       spent_sat = await deps.ownedBidsRepo.sumLifetimeConsumedSat();
     }
 
-    // #dual-provider: add NiceHash order spend so the spend side is symmetric
-    // with the Ocean revenue side (which already counts both providers' shares).
-    const spent_nicehash_sat = deps.nicehashSpentSat?.() ?? null;
+    // #dual-provider / B2: add LIFETIME NiceHash order spend (active + terminal
+    // orders) so the spend side is symmetric with the Ocean revenue side
+    // (which already counts both providers' shares) and doesn't lose an
+    // expired/rotated order's spend.
+    const spent_nicehash_sat = deps.nicehashSpentSat ? await deps.nicehashSpentSat() : null;
     if (spent_nicehash_sat !== null) {
       spent_sat += spent_nicehash_sat;
     }

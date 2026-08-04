@@ -157,6 +157,8 @@ export interface MetricPoint {
   total_balance_sat: number | null;
   datum_hashrate_ph: number | null;
   ocean_hashrate_ph: number | null;
+  /** B4: NiceHash order's delivered (accepted) speed at this tick, PH/s. */
+  nicehash_delivered_ph: number | null;
   /**
    * Ocean `share_log` percentage at this tick (e.g. 0.0182 for
    * 0.0182%). Drives the opt-in violet `% of Ocean` line on the
@@ -556,6 +558,8 @@ export interface AppConfig {
   nicehash_min_delivered_ph: number;
   nicehash_deep_liquidity_eh: number;
   nicehash_fill_skip_bottom_eh: number;
+  cheap_mode_slabs: string;
+  cheap_mode_slabs_enabled: boolean;
   hash_loss_variance_alert_pct: number;
   hash_loss_alert_after_minutes: number;
   braiins_fee_pct: number;

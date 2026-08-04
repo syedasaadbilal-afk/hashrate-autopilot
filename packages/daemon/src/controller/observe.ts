@@ -119,6 +119,9 @@ export interface ObserveInputs {
    * so floor / zero-hashrate alerts stay correct. null = treat as 0.
    */
   readonly nicehashDeliveredPh?: number | null;
+  /** B6: slab sizing decision computed by tick() from the previous evaluation. */
+  readonly slabTargetPh?: number | null;
+  readonly slabPark?: boolean;
   /**
    * #56: NiceHash is active but rationed, so Braiins runs as a concurrent
    * supplement this tick - decide() must NOT park the Braiins bid. One tick
@@ -588,6 +591,8 @@ export async function observe(deps: ObserveDeps, inputs: ObserveInputs): Promise
     pool,
     datum,
     ocean_hashrate_ph,
+    slab_target_ph: inputs.slabTargetPh ?? null,
+    slab_park: inputs.slabPark ?? false,
     share_log_pct,
     network_difficulty,
     estimated_block_reward_sat,

@@ -149,6 +149,9 @@ export interface ConfigTable {
   nicehash_deep_liquidity_eh: number;
   /** #E: cumulative bottom-skip (EH/s) for the NiceHash depth-aware fill line. 0 = off. */
   nicehash_fill_skip_bottom_eh: number;
+  nicehash_order_expiry_alert_days: number;
+  cheap_mode_slabs: string;
+  cheap_mode_slabs_enabled: 0 | 1;
   hash_loss_variance_alert_pct: number;
   hash_loss_alert_after_minutes: number;
   braiins_fee_pct: number;
@@ -604,6 +607,20 @@ export interface ClosedBidsCacheTable {
 }
 
 // ---------------------------------------------------------------------------
+// nicehash_orders_cache - B2: persistent sum cache for NiceHashSpendService.
+// A terminal (CANCELLED/COMPLETED/DEAD/EXPIRED) NiceHash order's payedAmount
+// is immutable, so we store it once and never re-fetch it. The currently
+// active order is NOT cached here - it's always read live.
+// ---------------------------------------------------------------------------
+
+export interface NicehashOrdersCacheTable {
+  nicehash_order_id: string;
+  payed_amount_sat: number;
+  first_seen_at: number;
+  last_seen_at: number;
+}
+
+// ---------------------------------------------------------------------------
 // Kysely database descriptor
 // ---------------------------------------------------------------------------
 
@@ -779,6 +796,7 @@ export interface Database {
   tick_metrics: TickMetricsTable;
   bid_events: BidEventsTable;
   closed_bids_cache: ClosedBidsCacheTable;
+  nicehash_orders_cache: NicehashOrdersCacheTable;
   secrets: SecretsTable;
   block_version_cache: BlockVersionCacheTable;
   braiins_deposits: BraiinsDepositsTable;

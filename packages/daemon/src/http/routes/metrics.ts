@@ -58,6 +58,14 @@ export interface MetricPoint {
    */
   readonly ocean_hashrate_ph: number | null;
   /**
+   * B4: NiceHash's accepted delivered speed this tick, PH/s - the same
+   * figure the NiceHash card and AVG NICEHASH tile already show, now
+   * plotted as its own Hashrate-chart line so NiceHash delivery is visible
+   * alongside Braiins/Datum/Ocean. Null when dual-provider is off, NiceHash
+   * isn't the active provider, or the tick predates migration 0126.
+   */
+  readonly nicehash_delivered_ph: number | null;
+  /**
    * Ocean `share_log` percentage at this tick (e.g. 0.0182 for
    * 0.0182%) - our slice of the pool's TIDES window, sampled from
    * the same `/statsnap` + `/pool_stat` fetch that supplies
@@ -262,6 +270,7 @@ function toMetricPoint(r: {
   total_balance_sat: number | null;
   datum_hashrate_ph: number | null;
   ocean_hashrate_ph: number | null;
+  nicehash_delivered_ph: number | null;
   share_log_pct: number | null;
   primary_bid_consumed_sat: number | null;
   network_difficulty: number | null;
@@ -319,6 +328,7 @@ function toMetricPoint(r: {
     total_balance_sat: r.total_balance_sat,
     datum_hashrate_ph: r.datum_hashrate_ph,
     ocean_hashrate_ph: r.ocean_hashrate_ph,
+    nicehash_delivered_ph: r.nicehash_delivered_ph,
     share_log_pct: r.share_log_pct,
     primary_bid_consumed_sat: r.primary_bid_consumed_sat,
     network_difficulty: r.network_difficulty,

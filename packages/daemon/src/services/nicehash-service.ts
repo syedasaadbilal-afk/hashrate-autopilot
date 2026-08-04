@@ -54,8 +54,55 @@ export interface NiceHashOrderSnapshot {
    * otherwise open a duplicate order. See tick.ts.
    */
   readonly lookupOk: boolean;
+  /**
+   * B1: order expiry, epoch ms, best-effort. NiceHash's `myOrders` response
+   * carries an index signature ({@link NiceHashMyOrder}) - no expiry field is
+   * CONFIRMED/typed against a live response yet, so this defensively tries a
+   * handful of candidate field names (`endTs`, `end`, `validUntil`,
+   * `expiredAt`, `expiresAt`) and accepts the first one that parses to a
+   * plausible future-or-recent timestamp (seconds are auto-scaled to ms).
+   * null when none of the candidates are present/parseable - callers must
+   * treat null as "unknown," never as "does not expire." See the `raw=`
+   * console.info log line in {@link getMyOrder} to confirm the real field
+   * name against a live order and tighten this once known.
+   */
+  readonly expiresAtMs: number | null;
   /** Raw order object, for diagnostics in the DRY-RUN validation logs. */
   readonly raw?: unknown;
+}
+
+/**
+ * B1: best-effort parse of an order-expiry timestamp from whatever
+ * unconfirmed field NiceHash actually uses. See the caveat on
+ * {@link NiceHashOrderSnapshot.expiresAtMs}.
+ */
+function parseExpiresAtMs(order: Record<string, unknown>): number | null {
+  const candidates = ['endTs', 'end', 'validUntil', 'expiredAt', 'expiresAt', 'expirationTime'];
+  for (const key of candidates) {
+    const raw = Number(order[key]);
+    if (!Number.isFinite(raw) || raw <= 0) continue;
+    // Seconds vs ms: anything below ~1e12 (~year 2001 in ms, but a completely
+    // ordinary "seconds since epoch" magnitude for anything after ~1973) is
+    // treated as seconds and scaled up.
+    const ms = raw < 1e12 ? raw * 1000 : raw;
+    // Sanity bound: reject anything more than ~5 years from now in either
+    // direction - a wrong field (e.g. a duration in some other unit) is more
+    // likely to produce a wildly implausible date than a genuine expiry.
+    const FIVE_YEARS_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+    if (Math.abs(ms - Date.now()) > FIVE_YEARS_MS) continue;
+    return ms;
+  }
+  return null;
+}
+
+/**
+ * B2: one order's terminal-spend classification, from `getAllOrdersSpend`.
+ */
+export interface NiceHashOrderSpendEntry {
+  readonly orderId: string;
+  readonly payedAmountSat: number;
+  /** True when the order is CANCELLED/COMPLETED/DEAD/EXPIRED (spend is final). */
+  readonly terminal: boolean;
 }
 
 export interface NiceHashLiveParams {
@@ -138,6 +185,21 @@ export class NiceHashService {
    * `marketFactor` (from the order book this tick) converts the order price to
    * sat/PH/day. Returns exists:false when we have no active order.
    */
+  /** B2: lifetime NiceHash spend across all orders (BTC). */
+  private lifetimeSpentBtc = 0;
+  /** B1: when the active order expires (epoch ms), null if unknown. */
+  private activeOrderEndsAtMs: number | null = null;
+
+  /** B2: lifetime spend in sat, for P&L. Includes expired/completed orders. */
+  getLifetimeSpentSat(): number | null {
+    return this.lifetimeSpentBtc > 0 ? Math.round(this.lifetimeSpentBtc * 1e8) : null;
+  }
+
+  /** B1: ms until the active NiceHash order expires; null when unknown. */
+  getOrderExpiresInMs(): number | null {
+    return this.activeOrderEndsAtMs === null ? null : this.activeOrderEndsAtMs - this.now();
+  }
+
   async getMyOrder(
     algorithm: string,
     market: string,
@@ -153,6 +215,7 @@ export class NiceHashService {
       acceptedSpeedPh: null,
       limitPh: null,
       statusCode: null,
+      expiresAtMs: null,
       lookupOk: true,
     };
     // Unknown result (the API call failed): lookupOk = false so the controller
@@ -173,6 +236,17 @@ export class NiceHashService {
         const dead = /CANCELLED|COMPLETED|DEAD|EXPIRED/i.test(status);
         return !dead;
       });
+      // B2 (v1.18.15): LIFETIME NiceHash spend across EVERY order returned -
+      // including CANCELLED / COMPLETED / EXPIRED ones. P&L previously read only
+      // the CURRENT order's payedAmount, so when an order expired its spend
+      // vanished from the books and the position looked more profitable than it
+      // was. payedAmount is terminal on a dead order, so summing the list is
+      // safe and self-correcting.
+      this.lifetimeSpentBtc = list.reduce((sum, o) => {
+        const p = Number(o.payedAmount ?? 0);
+        return Number.isFinite(p) && p > 0 ? sum + p : sum;
+      }, 0);
+
       const order = active[0];
       if (!order) {
         // Distinguish "no orders at all" from "orders exist but all looked
@@ -211,6 +285,13 @@ export class NiceHashService {
       const limitPh = Number.isFinite(limitRaw) ? limitRaw * 1000 : null;
       const spentBtc = Number.isFinite(payed) ? payed : null;
       const statusCode = (order.status as { code?: string } | undefined)?.code ?? null;
+      // B1: order expiry, so the daemon can warn BEFORE the order lapses. The
+      // daemon cannot create a replacement itself when NiceHash demands 2FA on
+      // order creation, so the operator needs lead time to do it manually.
+      const endTsRaw = raw['endTs'];
+      const endTsMs = typeof endTsRaw === 'string' ? Date.parse(endTsRaw) : NaN;
+      this.activeOrderEndsAtMs = Number.isFinite(endTsMs) ? endTsMs : null;
+      const expiresAtMs = parseExpiresAtMs(raw);
       // One-line validation snapshot: lets an operator confirm (in DRY-RUN,
       // before going LIVE) that the daemon parses their real order correctly -
       // the id/price/remaining should match what NiceHash's own UI shows.
@@ -228,12 +309,55 @@ export class NiceHashService {
         acceptedSpeedPh,
         limitPh,
         statusCode,
+        expiresAtMs,
         lookupOk: true,
         raw: order,
       };
     } catch (err) {
       console.warn(`[nicehash] getMyOrder(${algorithm}/${market}) failed: ${(err as Error).message}`);
       return failedLookup;
+    }
+  }
+
+  /**
+   * B2: spend across ALL orders NiceHash returns for this algorithm/market -
+   * active AND terminal (CANCELLED/COMPLETED/DEAD/EXPIRED) - so lifetime P&L
+   * can include orders that have since rotated out, not just the current one.
+   *
+   * Single page, `limit=500`: this client's `getMyOrders` always queries
+   * `ts=Date.now()` server-side (see @hashrate-autopilot/nicehash-client) with
+   * no confirmed cursor field on the wire response to page further back, so
+   * this does NOT paginate past 500 orders. That comfortably covers a
+   * realistic lifetime order count for one algorithm/market; if an account
+   * ever exceeds it, extend this with real ts-cursor pagination - but confirm
+   * the order's creation-timestamp field name against a live raw dump first
+   * (see the `raw=` log line in {@link getMyOrder}) rather than guessing.
+   *
+   * Terminal-status classification mirrors {@link getMyOrder}'s `active`
+   * filter exactly, so the two never disagree about what counts as "done."
+   */
+  async getAllOrdersSpend(algorithm: string, market: string): Promise<NiceHashOrderSpendEntry[]> {
+    try {
+      const resp = await this.client.getMyOrders(algorithm, market, { limit: 500 });
+      this.lastApiOkAt = this.now();
+      const list = Array.isArray(resp.list) ? resp.list : [];
+      return list
+        .filter((order) => typeof order.id === 'string' && order.id.length > 0)
+        .map((order) => {
+          const status = (order.status as { code?: string } | undefined)?.code ?? '';
+          const terminal = /CANCELLED|COMPLETED|DEAD|EXPIRED/i.test(status);
+          const payed = Number(order.payedAmount ?? 0);
+          return {
+            orderId: order.id,
+            payedAmountSat: Number.isFinite(payed) ? Math.round(payed * 1e8) : 0,
+            terminal,
+          };
+        });
+    } catch (err) {
+      console.warn(
+        `[nicehash] getAllOrdersSpend(${algorithm}/${market}) failed: ${(err as Error).message}`,
+      );
+      return [];
     }
   }
 

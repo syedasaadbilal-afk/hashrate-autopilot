@@ -45,6 +45,16 @@ import {
 
 import { isParked } from './park.js';
 
+/**
+ * NiceHash's minimum BTC per order / per refill (their Buy panel shows
+ * "Min: 0.001"). Config allows 0 for these amounts, and 0 was silently POSTed
+ * as `amountBtc: 0`, which NiceHash rejects - the real cause of the 2026-07-30
+ * "daemon can't create a new order" incident (the operator had left NiceHash
+ * order budget at 0). Catch it here with an operator-readable reason instead of
+ * emitting an API call that can only ever 400.
+ */
+export const NICEHASH_MIN_ORDER_BTC = 0.001;
+
 export type NicehashOrderActionKind =
   | 'CREATE'
   | 'REFILL'
@@ -181,6 +191,17 @@ export function decideNicehash(inputs: DecideNicehashInputs): readonly NicehashO
     if (inputs.desiredPriceSatPerPhDay === null) {
       return [{ kind: 'NONE', reason: 'NiceHash active but unpriceable this tick - skip create' }];
     }
+    if (inputs.createAmountBtc < NICEHASH_MIN_ORDER_BTC) {
+      return [
+        {
+          kind: 'NONE',
+          reason:
+            `cannot create: NiceHash order budget is ${inputs.createAmountBtc} BTC, below ` +
+            `NiceHash's ${NICEHASH_MIN_ORDER_BTC} BTC minimum. Set "NiceHash order budget" ` +
+            `in Config to at least ${NICEHASH_MIN_ORDER_BTC} BTC.`,
+        },
+      ];
+    }
     return [
       {
         kind: 'CREATE',
@@ -197,12 +218,21 @@ export function decideNicehash(inputs: DecideNicehashInputs): readonly NicehashO
   // it expire (a replacement would re-pay the new-order fee). A parked order
   // isn't spending, so this naturally won't fire until it's active again.
   if (order.remainingBtc !== null && order.remainingBtc < inputs.refillThresholdBtc) {
+    if (inputs.refillAmountBtc < NICEHASH_MIN_ORDER_BTC) {
+      actions.push({
+        kind: 'NONE',
+        reason:
+          `cannot refill: refill amount ${inputs.refillAmountBtc} BTC is below NiceHash's ` +
+          `${NICEHASH_MIN_ORDER_BTC} BTC minimum - raise "NiceHash refill amount" in Config.`,
+      });
+    } else {
     actions.push({
       kind: 'REFILL',
       ...(order.orderId ? { orderId: order.orderId } : {}),
       amountBtc: inputs.refillAmountBtc,
       reason: `remaining ${order.remainingBtc.toFixed(8)} BTC < ${inputs.refillThresholdBtc.toFixed(8)} threshold - refill (avoids new-order fee)`,
     });
+    }
   }
 
   // Track the fill line + overpay via an in-place price edit, honoring the

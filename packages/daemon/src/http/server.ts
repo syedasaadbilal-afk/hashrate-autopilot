@@ -37,6 +37,7 @@ import type { RuntimeStateRepo } from '../state/repos/runtime_state.js';
 import type { TickMetricsRepo } from '../state/repos/tick_metrics.js';
 import type { Database } from '../state/types.js';
 import type { AccountSpendService } from '../services/account-spend.js';
+import type { NiceHashSpendService } from '../services/nicehash-spend.js';
 import type { BlockVersionService } from '../services/block-version.js';
 import type { BtcPriceService } from '../services/btc-price.js';
 import type { HashpriceCache } from '../services/hashprice-cache.js';
@@ -103,6 +104,8 @@ export interface HttpServerDeps {
   readonly payoutObserver: PayoutObserver | null;
   readonly oceanClient: OceanClient | null;
   readonly accountSpend: AccountSpendService | null;
+  /** B2: lifetime NiceHash spend (active + terminal orders). null when dual-provider is off. */
+  readonly nicehashSpend: NiceHashSpendService | null;
   readonly btcPriceService: BtcPriceService;
   readonly hashpriceCache: HashpriceCache;
   /** #335: chain-tip poller for the "block height" tile. Null when no bitcoind RPC is configured (the tile hides). */
@@ -320,8 +323,15 @@ export async function createHttpServer(deps: HttpServerDeps): Promise<HttpServer
     tickMetricsRepo: deps.tickMetricsRepo,
     oceanPayoutsRepo: deps.oceanPayoutsRepo,
     oceanPayoutsService: deps.oceanPayoutsService,
-    // #dual-provider: NiceHash order spend from the latest provider evaluation.
-    nicehashSpentSat: () => {
+    // B2 (was #dual-provider): LIFETIME NiceHash spend (active + terminal
+    // orders), not just the current order's payedAmount - a completed/expired
+    // order's spend no longer vanishes when a new order replaces it. Falls
+    // back to the current-order-only figure if the lifetime service is
+    // unavailable or its fetch hasn't succeeded yet, so this never regresses
+    // below what v1.18.15 already showed.
+    nicehashSpentSat: async () => {
+      const snap = deps.nicehashSpend ? await deps.nicehashSpend.getLifetimeSpend() : null;
+      if (snap) return snap.total_sat;
       const pe = deps.controller.getProviderEvaluation();
       const spentBtc = pe?.nicehashOrder?.spentBtc ?? null;
       return spentBtc !== null ? Math.round(spentBtc * 1e8) : null;
