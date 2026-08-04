@@ -112,6 +112,8 @@ export interface AggregatedTickMetricRow {
   total_balance_sat: number | null;
   datum_hashrate_ph: number | null;
   ocean_hashrate_ph: number | null;
+  /** B4: NiceHash's accepted delivered speed this tick, PH/s. Captured since migration 0126. */
+  nicehash_delivered_ph: number | null;
   share_log_pct: number | null;
   primary_bid_consumed_sat: number | null;
   // #93: secondary-axis series on the chart dropdown.
@@ -213,6 +215,7 @@ export class TickMetricsRepo {
         total_balance_sat: r.total_balance_sat,
         datum_hashrate_ph: r.datum_hashrate_ph,
         ocean_hashrate_ph: r.ocean_hashrate_ph,
+        nicehash_delivered_ph: r.nicehash_delivered_ph,
         share_log_pct: r.share_log_pct,
         primary_bid_consumed_sat: r.primary_bid_consumed_sat,
         network_difficulty: r.network_difficulty,
@@ -267,6 +270,8 @@ export class TickMetricsRepo {
         sql<number | null>`AVG(total_balance_sat)`.as('total_balance_sat'),
         sql<number | null>`AVG(datum_hashrate_ph)`.as('datum_hashrate_ph'),
         sql<number | null>`AVG(ocean_hashrate_ph)`.as('ocean_hashrate_ph'),
+        // B4: same AVG-over-bucket treatment as datum/ocean above.
+        sql<number | null>`AVG(nicehash_delivered_ph)`.as('nicehash_delivered_ph'),
         sql<number | null>`AVG(share_log_pct)`.as('share_log_pct'),
         // Cumulative counter - MAX gives the end-of-bucket value, so
         // bucket-to-bucket deltas yield the actual-spend per bucket.

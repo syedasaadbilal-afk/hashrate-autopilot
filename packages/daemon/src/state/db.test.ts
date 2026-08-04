@@ -146,6 +146,18 @@ describe('openDatabase - migrations', () => {
       '0118_event_notes.sql',
       '0119_alerts_condition_started_at.sql',
       '0120_deduced_payouts.sql',
+      '0121_dual_provider_config.sql',
+      '0122_nicehash_secrets.sql',
+      '0123_persist_active_provider.sql',
+      '0124_nicehash_deep_liquidity.sql',
+      '0125_bid_events_provider.sql',
+      '0126_tick_metrics_nicehash.sql',
+      '0127_nicehash_fill_skip_bottom.sql',
+      '0128_hash_loss_alert.sql',
+      '0129_price_slabs.sql',
+      '0130_nicehash_orders_cache.sql',
+      '0131_cheap_mode_slabs.sql',
+      '0132_nicehash_order_expiry_alert.sql',
     ]);
     expect(handle.migrations.skipped).toEqual([]);
   });
